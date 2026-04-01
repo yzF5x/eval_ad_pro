@@ -55,7 +55,7 @@ def main(args):
         data = torch.load(fpath, map_location="cpu")
         compressed_attn = data.get("compressed_attn", data.get("filtered_attn"))
         if isinstance(compressed_attn, dict):
-            for k in ("vlm_attn", "prompt2text_attn"):
+            for k in ("vlm_attn", "prompt2text_attn", "filtered_vlm_attn", "filtered_prompt2text_attn"):
                 v = compressed_attn.get(k, None)
                 if torch.is_tensor(v) and v.dtype in (torch.float16, torch.bfloat16):
                     compressed_attn[k] = v.float()

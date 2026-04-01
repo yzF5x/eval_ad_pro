@@ -908,8 +908,12 @@ def optimized_get_attention_from_saved_per_layer_head_fast(
     keep_indices = b + keep_indices_o
     keep_indices = keep_indices.flatten()
     
-    vlm_attn = compressed_attn["vlm_attn"]
-    prompt2text_attn_all = compressed_attn["prompt2text_attn"]
+    vlm_attn = compressed_attn.get("vlm_attn", None)
+    if vlm_attn is None:
+        vlm_attn = compressed_attn["filtered_vlm_attn"]
+    prompt2text_attn_all = compressed_attn.get("prompt2text_attn", None)
+    if prompt2text_attn_all is None:
+        prompt2text_attn_all = compressed_attn["filtered_prompt2text_attn"]
     kept_indices = compressed_attn["kept_indices"]
     if not torch.is_tensor(kept_indices):
         kept_indices = torch.tensor(kept_indices)

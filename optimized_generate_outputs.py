@@ -107,7 +107,7 @@ def main(args):
 
         compressed_attn_to_save = move_to_cpu(compressed_attn)
         if isinstance(compressed_attn_to_save, dict):
-            for k in ("vlm_attn", "prompt2text_attn"):
+            for k in ("vlm_attn", "prompt2text_attn", "filtered_vlm_attn", "filtered_prompt2text_attn"):
                 v = compressed_attn_to_save.get(k, None)
                 if torch.is_tensor(v):
                     compressed_attn_to_save[k] = v.to(torch.float16)
