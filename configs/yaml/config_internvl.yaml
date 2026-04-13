@@ -1,0 +1,23 @@
+shared:
+  model_path: OpenGVLab/InternVL3_5-4B-HF
+  model_type: internvl
+  with_tag: false
+  vision_token_id: 151671
+  patch_size: 14
+  merge_size: 2
+  layers_num: 36
+  heads_num: 32
+
+generator:
+  max_new_tokens: 1024
+  overwrite: false
+  disable_monkey_patch: true
+  outlier_ratio: 50.0
+  dominance_ratio: 5.0
+  outlier_share_thr: 0.3
+
+evaluator:
+  global_save_fig: true
+  normal_set_zero: false
+  overwrite: false
+  return_aggreagate: true

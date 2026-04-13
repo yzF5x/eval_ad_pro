@@ -1,0 +1,23 @@
+shared:
+  model_path: Qwen/Qwen2.5-VL-7B-Instruct
+  model_type: auto
+  with_tag: false
+  vision_token_id: 151655
+  patch_size: 14
+  merge_size: 2
+  layers_num: 28
+  heads_num: 28
+
+generator:
+  max_new_tokens: 1024
+  overwrite: false
+  disable_monkey_patch: false
+  outlier_ratio: 50.0
+  dominance_ratio: 5.0
+  outlier_share_thr: 0.3
+
+evaluator:
+  global_save_fig: true
+  normal_set_zero: false
+  overwrite: false
+  return_aggreagate: true

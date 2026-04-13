@@ -1,10 +1,23 @@
-import requests
-import json
-import cv2
-import base64
+import ast
+import os
+
 from PIL import Image
+import requests
 import torch
-    
+
+
+def move_to_cpu(obj):
+    """Recursively move all torch.Tensors in obj to CPU."""
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().cpu()
+    elif isinstance(obj, dict):
+        return {k: move_to_cpu(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(move_to_cpu(v) for v in obj)
+    else:
+        return obj
+
+
 def get_resize_info(model_path):
     if 'qwen3' in model_path.lower():
         merged_patch_size = 32
@@ -47,7 +60,9 @@ def send2api(prediction , prompt = "" , model = "google/gemini-flash-1.5"):
     """
     prompt = "Determine whether there is an anomaly or defect by the semantics of the following paragraph.  If there is, answer \"yes\", otherwise answer \"no\".  No other words are allowed except the number.  No punctuation is allowed. The paragraph is : "
     url = "https://openrouter.ai/api/v1/chat/completions"
-    ssh_key = ""
+    ssh_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not ssh_key:
+        return "Something Wrong with API"
     headers= {
             "Authorization": f"Bearer " + ssh_key
     }
@@ -82,11 +97,10 @@ def toliststr(s):
         字符串形式的列表 转换为 真实列表
     """
     if isinstance(s, str) and (s[0] == '[') and (s[-1] == ']'):
-        return [str(x) for x in eval(s)]
+        return [str(x) for x in ast.literal_eval(s)]
     elif isinstance(s, str):
         return [s]
     elif isinstance(s, list):
         return [str(x) for x in s]
     raise NotImplementedError
-
 

@@ -8,7 +8,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 import math
 import seaborn as sns
 import spacy
@@ -21,18 +21,27 @@ from collections import OrderedDict
 import time
 
 _STRUCTURE_3x3 = np.ones((3, 3), dtype=np.int32)
+_SPACY_PIPELINES: Dict[str, Any] = {}
+
+
+def _get_spacy_pipeline(lang_model: str):
+    nlp = _SPACY_PIPELINES.get(lang_model)
+    if nlp is None:
+        nlp = spacy.load(lang_model)
+        _SPACY_PIPELINES[lang_model] = nlp
+    return nlp
 
 
 def detect_attn_spike_by_share(
-    vlm_attn: torch.Tensor,
+    flatten_text2vision_attn: torch.Tensor,
     spike_patch_idx: int,
     share_thr: float = 0.30,
     eps: float = 1e-12
 ):
-    if vlm_attn.dim() == 3:
-        x = vlm_attn.view(vlm_attn.shape[0], -1)
+    if flatten_text2vision_attn.dim() == 3:
+        x = flatten_text2vision_attn.view(flatten_text2vision_attn.shape[0], -1)
     else:
-        x = vlm_attn
+        x = flatten_text2vision_attn
     x = x.detach().float()
 
     spike_vals = x[:, spike_patch_idx]
@@ -44,18 +53,18 @@ def detect_attn_spike_by_share(
 
 
 def detect_single_extreme_values_in_vlm_attn(
-    vlm_attn: torch.Tensor,
+    flatten_text2vision_attn: torch.Tensor,
     ratio: float = 50.0,
     dominance_ratio: float = 5.0,
     eps: float = 1e-12,
     return_indices: bool = True
 ):
-    if vlm_attn.dim() == 3:
-        x = vlm_attn.view(vlm_attn.shape[0], -1)
-    elif vlm_attn.dim() == 2:
-        x = vlm_attn
+    if flatten_text2vision_attn.dim() == 3:
+        x = flatten_text2vision_attn.view(flatten_text2vision_attn.shape[0], -1)
+    elif flatten_text2vision_attn.dim() == 2:
+        x = flatten_text2vision_attn
     else:
-        raise ValueError(f"Unsupported shape: {vlm_attn.shape}")
+        raise ValueError(f"Unsupported shape: {flatten_text2vision_attn.shape}")
 
     x = x.detach().float()
     Ntok, P = x.shape
@@ -382,7 +391,7 @@ def get_token_indices_by_pos_and_words(
     explicit_keep_words={},
     explicit_remove_words={'think','answer','addCriterion','begin_of_box','end_of_box'}
 ):
-    nlp = spacy.load(lang_model)
+    nlp = _get_spacy_pipeline(lang_model)
     doc = nlp(text)
     spa_tokens = [(token.text, token.pos_) for token in doc]
 
@@ -412,22 +421,22 @@ def get_token_indices_by_pos_and_words(
     return keep_indices, keep_tokens
 
 
-def normalize_heatmap(vlm_attn_weights, grid_height, height, width, gamma_factor=1, grid_width=15):
-    vlm_attn_image = vlm_attn_weights.reshape((grid_height, grid_width))
-    vlm_attn_image = vlm_attn_image.to(torch.float32)
-    vlm_attn_image = F.interpolate(
-        vlm_attn_image.unsqueeze(0).unsqueeze(0), 
+def normalize_heatmap(flatten_text2vision_attn_weights, grid_height, height, width, gamma_factor=1, grid_width=15):
+    flatten_text2vision_attn_image = flatten_text2vision_attn_weights.reshape((grid_height, grid_width))
+    flatten_text2vision_attn_image = flatten_text2vision_attn_image.to(torch.float32)
+    flatten_text2vision_attn_image = F.interpolate(
+        flatten_text2vision_attn_image.unsqueeze(0).unsqueeze(0), 
         size=(height, width), 
         mode='bicubic'
     ).squeeze()
-    attn_over_image_np = np.power(vlm_attn_image.numpy(), 1 / gamma_factor)
+    attn_over_image_np = np.power(flatten_text2vision_attn_image.numpy(), 1 / gamma_factor)
     return attn_over_image_np
 
 
-def custom_weighted_sum(filtered_vlm_attn: torch.Tensor, index: torch.Tensor) -> torch.Tensor:
+def custom_weighted_sum(filtered_flatten_text2vision_attn: torch.Tensor, index: torch.Tensor) -> torch.Tensor:
     weights = index.view(-1, 1).float()
     num_to_count = weights.sum()
-    weighted_attn = filtered_vlm_attn * weights
+    weighted_attn = filtered_flatten_text2vision_attn * weights
     result = weighted_attn.sum(dim=0)
     if num_to_count > 0:
         result = result / num_to_count
@@ -446,7 +455,7 @@ def heatmap_visual(attn_over_image_np, image, title='Attention heatmap overlay',
     return fig
 
 
-def visual_attn_token2image(keep_tokens, filtered_vlm_attn, save_name, grid_height, grid_width, height, width, image, summed=None, se_info=None, threshold=None, threshold_se=None, par_info=None, weight_info=None):
+def visual_attn_token2image(keep_tokens, filtered_flatten_text2vision_attn, save_name, grid_height, grid_width, height, width, image, summed=None, se_info=None, threshold=None, threshold_se=None, par_info=None, weight_info=None):
     additional_info = True
     if summed is None and se_info is None:
         additional_info = False
@@ -460,7 +469,7 @@ def visual_attn_token2image(keep_tokens, filtered_vlm_attn, save_name, grid_heig
     token_attention_maps = []
     
     for idx, token in enumerate(keep_tokens):
-        attn_weights_over_vis_tokens = filtered_vlm_attn[idx]
+        attn_weights_over_vis_tokens = filtered_flatten_text2vision_attn[idx]
         attn_over_image = normalize_heatmap(attn_weights_over_vis_tokens, grid_height, height, width, gamma_factor=1, grid_width=grid_width)
         axs[idx].imshow(image)
         axs[idx].imshow(attn_over_image, cmap='jet', alpha=0.5)
@@ -595,23 +604,23 @@ def get_attention_from_saved_per_layer_head_fast(
     keep_indices = keep_indices.flatten()
     keep_indices = keep_indices.tolist()
     
-    vlm_attn = llm_attn_matrix[:, :, output_token_start:output_token_end, vision_token_start:vision_token_end]
-    vlm_attn = vlm_attn.flatten(start_dim=0, end_dim=2)
-    vlm_attn = row_normalize(vlm_attn)
-    device = vlm_attn.device
-    Ntok = vlm_attn.shape[0]
+    flatten_text2vision_attn = llm_attn_matrix[:, :, output_token_start:output_token_end, vision_token_start:vision_token_end]
+    flatten_text2vision_attn = flatten_text2vision_attn.flatten(start_dim=0, end_dim=2)
+    flatten_text2vision_attn = row_normalize(flatten_text2vision_attn)
+    device = flatten_text2vision_attn.device
+    Ntok = flatten_text2vision_attn.shape[0]
     
-    valid_all = torch.ones(vlm_attn.shape[0], dtype=torch.bool)
-    attn_over_image_np1 = normalize_heatmap(custom_weighted_sum(vlm_attn, valid_all), grid_height, height, width, gamma_factor=1, grid_width=grid_width)
+    valid_all = torch.ones(flatten_text2vision_attn.shape[0], dtype=torch.bool)
+    attn_over_image_np1 = normalize_heatmap(custom_weighted_sum(flatten_text2vision_attn, valid_all), grid_height, height, width, gamma_factor=1, grid_width=grid_width)
     
-    prompt2text_attn_all = llm_attn_matrix[:, :, output_token_start:output_token_end, vision_token_end:output_token_start]
-    prompt2text_attn_all = prompt2text_attn_all.flatten(start_dim=0, end_dim=2)
-    filtered_prompt2output_text = prompt2text_attn_all[:, keep_indices_i]
+    flatten_text2text_attn = llm_attn_matrix[:, :, output_token_start:output_token_end, vision_token_end:output_token_start]
+    flatten_text2text_attn = flatten_text2text_attn.flatten(start_dim=0, end_dim=2)
+    filtered_prompt2output_text = flatten_text2text_attn[:, keep_indices_i]
     to_change = '.' + save_name.split('.')[-1]
     
     try:
         row_idx, col_idx = torch.meshgrid(torch.tensor(keep_indices), torch.tensor(keep_indices_i), indexing='ij')
-        selected_prompt2text = prompt2text_attn_all[row_idx, col_idx]
+        selected_prompt2text = flatten_text2text_attn[row_idx, col_idx]
     except:
         if save_fig:
             save_path = save_name.replace(f'{to_change}','_global_attention.png')
@@ -630,15 +639,15 @@ def get_attention_from_saved_per_layer_head_fast(
     threshold = summed.median()
     valid_sum_index_all = summed_all >= threshold
 
-    par_info_all = get_par_from_attention_fast(vlm_attn, 0.17, grid_height, grid_width)
+    par_info_all = get_par_from_attention_fast(flatten_text2vision_attn, 0.17, grid_height, grid_width)
     valid_par_index_all = par_info_all <= 0.5
 
-    spike_patch_idx, outlier_idx = detect_single_extreme_values_in_vlm_attn(vlm_attn, ratio=50.0, dominance_ratio=5.0)
-    outlier_flag = torch.zeros(Ntok, device=vlm_attn.device, dtype=torch.bool)
+    spike_patch_idx, outlier_idx = detect_single_extreme_values_in_vlm_attn(flatten_text2vision_attn, ratio=50.0, dominance_ratio=5.0)
+    outlier_flag = torch.zeros(Ntok, device=flatten_text2vision_attn.device, dtype=torch.bool)
     outlier_flag[outlier_idx] = True
     outlier_tokens_num = sum(outlier_flag)
     all_tokens_num = outlier_flag.shape[0]
-    bad_idx, bad_flag = detect_attn_spike_by_share(vlm_attn, spike_patch_idx, 0.3)
+    bad_idx, bad_flag = detect_attn_spike_by_share(flatten_text2vision_attn, spike_patch_idx, 0.3)
 
     candidate_se_compute = valid_filtered_token & valid_par_index_all & (~outlier_flag) & (~bad_flag)
     cand_idx = candidate_se_compute.nonzero(as_tuple=True)[0]
@@ -646,7 +655,7 @@ def get_attention_from_saved_per_layer_head_fast(
     cand_all_idx = candidate_all.nonzero(as_tuple=True)[0]
     
     if cand_all_idx.numel() <= 3:
-        return normalize_heatmap(custom_weighted_sum(vlm_attn, valid_filtered_token & valid_sum_index_all), grid_height, height, width, gamma_factor=1, grid_width=grid_width), 1.0, outlier_tokens_num, all_tokens_num
+        return normalize_heatmap(custom_weighted_sum(flatten_text2vision_attn, valid_filtered_token & valid_sum_index_all), grid_height, height, width, gamma_factor=1, grid_width=grid_width), 1.0, outlier_tokens_num, all_tokens_num
     
     se_info_all = torch.full((Ntok,), float("inf"), device=device, dtype=torch.float32)
     se_list_all = [
@@ -660,7 +669,7 @@ def get_attention_from_saved_per_layer_head_fast(
         for _ in range(Ntok)
     ]
     se_sub, se_list_sub, _, _ = get_spatial_entropy_from_attention_fast(
-        vlm_attn[cand_idx],
+        flatten_text2vision_attn[cand_idx],
         grid_height=grid_height,
         grid_width=grid_width
     )
@@ -683,10 +692,10 @@ def get_attention_from_saved_per_layer_head_fast(
     final_valid_index_reasoning = valid_filtered_token & valid_sum_index_all & valid_se_isfinite & valid_se_index_all & valid_par_index_all & (~outlier_flag) & (~bad_flag)
 
     if final_valid_index_reasoning.sum().item() < 3:
-        return normalize_heatmap(custom_weighted_sum(vlm_attn, candidate_se_compute), grid_height, height, width, gamma_factor=1, grid_width=grid_width), 1.0, outlier_tokens_num, all_tokens_num
+        return normalize_heatmap(custom_weighted_sum(flatten_text2vision_attn, candidate_se_compute), grid_height, height, width, gamma_factor=1, grid_width=grid_width), 1.0, outlier_tokens_num, all_tokens_num
     
     final_valid_image_reasoning = normalize_heatmap(
-        custom_weighted_sum(vlm_attn, final_valid_index_reasoning.to(torch.int)),
+        custom_weighted_sum(flatten_text2vision_attn, final_valid_index_reasoning.to(torch.int)),
         grid_height, height, width, gamma_factor=1, grid_width=grid_width
     )
     final_index = final_valid_index_reasoning.nonzero(as_tuple=True)[0]
@@ -713,18 +722,18 @@ def get_attention_from_saved_per_layer_head_fast(
     except:
         valid_sc = final_valid_index_reasoning
     
-    SC_new = compute_spatial_consistency_fast(vlm_attn[valid_sc][:], grid_height, grid_width, top_k_percent=10)
-    aggreated_final_image = normalize_heatmap(aggregate_cross_attentions(vlm_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights), grid_height, height, width, gamma_factor=1, grid_width=grid_width)
+    SC_new = compute_spatial_consistency_fast(flatten_text2vision_attn[valid_sc][:], grid_height, grid_width, top_k_percent=10)
+    aggreated_final_image = normalize_heatmap(aggregate_cross_attentions(flatten_text2vision_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights), grid_height, height, width, gamma_factor=1, grid_width=grid_width)
     
     if return_aggreagate:
         if save_fig:
-            visual_attn_token2image(final_keep_tokens, vlm_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_aggreated_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning], topk_final_token_weights)
+            visual_attn_token2image(final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_aggreated_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning], topk_final_token_weights)
             save_path = save_name.replace(f'{to_change}', f'_final_aggreated_image_fast.png')
             heatmap_visual(aggreated_final_image, image, title=f'SC: {SC_new:.2f}\n {output_text}', save_name=save_path)
         return aggreated_final_image, SC_new, outlier_tokens_num, all_tokens_num
     else:
         if save_fig:
-            visual_attn_token2image(final_keep_tokens, vlm_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_filtered_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning])
+            visual_attn_token2image(final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_filtered_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning])
             save_path = save_name.replace(f'{to_change}', f'_final_valid_image_fast.png')
             heatmap_visual(final_valid_image_reasoning, image, title=f'SC: {SC_new:.2f}', save_name=save_path)
 
@@ -741,12 +750,16 @@ def optimized_get_saved_per_layer_head_attention(
     merge_size=2,
     **kwargs
 ):
+    """
+    保存 attention 矩阵，保存完整数据和 outlier 标记
+    保持原始数据格式（float32）
+    """
     sequences = kwargs.pop("sequences", None)
     vision_token_id = kwargs.pop("vision_token_id", 151655)
     outlier_ratio = kwargs.pop("outlier_ratio", 50.0)
     dominance_ratio = kwargs.pop("dominance_ratio", 5.0)
     outlier_share_thr = kwargs.pop("outlier_share_thr", 0.3)
-
+    
     if sequences is None:
         sequences = output_ids.get("sequences", None)
     if sequences is None:
@@ -778,6 +791,7 @@ def optimized_get_saved_per_layer_head_attention(
     if prompt_text_len < 0:
         raise ValueError("Computed prompt_text_len < 0. Check vision token span or patch settings.")
 
+    # 提取完整的 attention 矩阵
     attn_to_vision = torch.zeros(
         num_layers, num_heads, output_token_len, num_patches, dtype=torch.float32
     )
@@ -805,14 +819,16 @@ def optimized_get_saved_per_layer_head_attention(
             if prompt_text_len > 0:
                 attn_to_text[layer_idx, :, t - 1, :] = row[:, vision_token_end:output_token_start]
 
-    vlm_attn = attn_to_vision.flatten(start_dim=0, end_dim=2)
-    vlm_attn = row_normalize(vlm_attn)
-    prompt2text_attn_all = attn_to_text.flatten(start_dim=0, end_dim=2)
+    # Flatten layer 和 head 维度
+    flatten_text2vision_attn = attn_to_vision.flatten(start_dim=0, end_dim=2)
+    flatten_text2vision_attn = row_normalize(flatten_text2vision_attn)
+    flatten_text2text_attn = attn_to_text.flatten(start_dim=0, end_dim=2)
 
+    # 进行 outlier 检测，保存标记（不筛选数据）
     spike_patch_idx, outlier_idx = detect_single_extreme_values_in_vlm_attn(
-        vlm_attn, ratio=outlier_ratio, dominance_ratio=dominance_ratio
+        flatten_text2vision_attn, ratio=outlier_ratio, dominance_ratio=dominance_ratio
     )
-    outlier_flag = torch.zeros(vlm_attn.shape[0], device=vlm_attn.device, dtype=torch.bool)
+    outlier_flag = torch.zeros(flatten_text2vision_attn.shape[0], device=flatten_text2vision_attn.device, dtype=torch.bool)
     if outlier_idx is not None and outlier_idx.numel() > 0:
         outlier_flag[outlier_idx] = True
     outlier_tokens_num = int(outlier_flag.sum().item())
@@ -821,24 +837,20 @@ def optimized_get_saved_per_layer_head_attention(
     if spike_patch_idx is None:
         bad_flag = torch.zeros_like(outlier_flag)
     else:
-        _, bad_flag = detect_attn_spike_by_share(vlm_attn, spike_patch_idx, outlier_share_thr)
+        _, bad_flag = detect_attn_spike_by_share(flatten_text2vision_attn, spike_patch_idx, outlier_share_thr)
 
-    keep_mask = (~outlier_flag) & (~bad_flag)
-    if not keep_mask.any():
-        keep_mask = torch.ones_like(keep_mask)
-    kept_indices = keep_mask.nonzero(as_tuple=True)[0]
-
-    filtered_vlm_attn = vlm_attn[keep_mask]
-    filtered_prompt2text = prompt2text_attn_all[keep_mask]
-
+    # 保存完整的 attention 和 outlier 标记（保持原始数据格式 float32）
     compressed_attn = {
-        "filtered_vlm_attn": filtered_vlm_attn,
-        "filtered_prompt2text_attn": filtered_prompt2text,
-        "kept_indices": kept_indices,
-        "vlm_attn_normalized": True,
+        "flatten_text2vision_attn": flatten_text2vision_attn,  # 完整数据，dtype float32
+        "flatten_text2text_attn": flatten_text2text_attn,  # 完整数据，dtype float32
+        "outlier_flag": outlier_flag,  # outlier 标记
+        "bad_flag": bad_flag,  # bad 标记
+        "flatten_text2vision_attn_normalized": True,
         "outlier_tokens_num": outlier_tokens_num,
-        "all_tokens_num": all_tokens_num
+        "all_tokens_num": all_tokens_num,
+        "spike_patch_idx": spike_patch_idx if spike_patch_idx is not None else -1,
     }
+    
     meta = {
         "input_token_len": input_token_len,
         "output_token_len": output_token_len,
@@ -858,118 +870,167 @@ def optimized_get_saved_per_layer_head_attention(
     return compressed_attn, meta
 
 
-def optimized_get_attention_from_saved_per_layer_head_fast( 
-                         tokenizer, 
-                         compressed_attn,
-                         sequences,
-                         input_token_len,
-                         output_token_len,
-                         processed_image,
-                         processed_prompt,
-                         return_aggreagate=False,
-                         patch_size=14,
-                         merge_size=2,
-                         save_name='global_attn_heatmap',
-                         pred_has_anomaly=None,
-                         save_fig=False,
-                         with_tag=True,
-                         layers_num=28,
-                         heads_num=28,
-                         vision_token_id=151655,
-                         **kwargs):
-    generated_ids_trimmed = kwargs.pop("generated_ids_trimmed", None)
-    output_token_save_path = kwargs.pop("output_token_save_path", None)
+def optimized_get_attention_from_saved_per_layer_head_fast(
+    tokenizer,
+    compressed_attn,
+    sequences,
+    input_token_len,
+    output_token_len,
+    processed_image,
+    processed_prompt,
+    return_aggreagate=False,
+    patch_size=14,
+    merge_size=2,
+    save_name='global_attn_heatmap',
+    pred_has_anomaly=None,
+    save_fig=False,
+    with_tag=True,
+    layers_num=28,
+    heads_num=28,
+    vision_token_id=151655,
+    **kwargs
+):
+    """
+    从保存的 attention 中进行筛选和可视化，
+    使用保存的 outlier 标记进行筛选，保持与原始代码一致的逻辑
+    """
     image = processed_image[-1]
-    width, height = image.size 
-    grid_width, grid_height = int(width / (patch_size*merge_size)), int(height / (patch_size*merge_size)) 
+    width, height = image.size
+    grid_width, grid_height = int(width / (patch_size * merge_size)), int(height / (patch_size * merge_size))
     num_patches = int(grid_width * grid_height)
-    
     output_token_start = input_token_len
     output_token_end = output_token_start + output_token_len 
+    
     print(f"text start: {output_token_start} ; text end : {output_token_end}")
     flat_ids = sequences[0,:output_token_start].view(-1)
     mask = (flat_ids == vision_token_id)
     vision_token_start = torch.where(mask)[0][0].item() 
     vision_token_end = int(vision_token_start + num_patches)
     print(f"vision start: {vision_token_start} ; vision end : {vision_token_end}")
-    
+
     token_list = sequences[0, output_token_start:output_token_end]
     token_list_decoded = tokenizer.batch_decode(token_list, skip_special_tokens=True)
-    
+
     input_text = tokenizer.decode(sequences[0, vision_token_end:output_token_start])
     keep_indices_i, keep_tokens_i = get_token_indices_by_pos_and_words(input_text, tokenizer)
-    
+
     output_text = tokenizer.decode(token_list, skip_special_tokens=True)
-    keep_indices_o, keep_tokens_o = get_token_indices_by_pos_and_words(output_text, tokenizer, keep_pos={'NOUN'}, explicit_remove_words={'defect','defects','anomaly','anomalies','image','overview','analyze','conclusion','answer','think','Yes','No'})
-    
-    token_list_decoded = token_list_decoded * (layers_num * heads_num)
+    keep_indices_o, keep_tokens_o = get_token_indices_by_pos_and_words(
+        output_text, tokenizer, keep_pos={'NOUN'}, 
+        explicit_remove_words={'defect','defects','anomaly','anomalies','image','overview',
+                              'analyze','conclusion','answer','think','Yes','No'}
+    )
+
+    # 计算 keep_indices（考虑 layer 和 head 维度）
+    token_list_decoded_extended = token_list_decoded * (layers_num * heads_num)
     b = torch.arange(layers_num * heads_num).unsqueeze(1) * output_token_len
     keep_indices_o = torch.tensor(keep_indices_o)
-    keep_indices = b + keep_indices_o
-    keep_indices = keep_indices.flatten()
-    
-    vlm_attn = compressed_attn.get("vlm_attn", None)
-    if vlm_attn is None:
-        vlm_attn = compressed_attn["filtered_vlm_attn"]
-    prompt2text_attn_all = compressed_attn.get("prompt2text_attn", None)
-    if prompt2text_attn_all is None:
-        prompt2text_attn_all = compressed_attn["filtered_prompt2text_attn"]
-    kept_indices = compressed_attn["kept_indices"]
-    if not torch.is_tensor(kept_indices):
-        kept_indices = torch.tensor(kept_indices)
-    kept_indices = kept_indices.to(torch.long)
-    if not compressed_attn.get("vlm_attn_normalized", False):
-        vlm_attn = row_normalize(vlm_attn)
-    device = vlm_attn.device
-    Ntok = vlm_attn.shape[0]
-    
-    outlier_tokens_num = int(compressed_attn.get("outlier_tokens_num", 0))
-    all_tokens_num = int(compressed_attn.get("all_tokens_num", Ntok))
-    
-    valid_all = torch.ones(vlm_attn.shape[0], dtype=torch.bool)
-    attn_over_image_np1 = normalize_heatmap(custom_weighted_sum(vlm_attn, valid_all), grid_height, height, width, gamma_factor=1, grid_width=grid_width)
-    to_change = '.' + save_name.split('.')[-1]
-    
-    if len(keep_indices_i) == 0 or prompt2text_attn_all.shape[1] == 0:
-        if save_fig:
-            save_path = save_name.replace(f'{to_change}','_global_attention.png')
-            heatmap_visual(attn_over_image_np1, image, title='original_global_attention', save_name=save_path)
-        return attn_over_image_np1, 1.0, outlier_tokens_num, all_tokens_num
+    keep_indices_o_all = b + keep_indices_o
+    keep_indices_o_all = keep_indices_o_all.flatten()
+    keep_indices_o_all = keep_indices_o_all.tolist()
 
-    filtered_prompt2output_text = prompt2text_attn_all[:, keep_indices_i]
-    valid_filtered_token = torch.isin(kept_indices, keep_indices.to(kept_indices.device))
+    # 从保存的数据中读取 attention（保持原始数据类型）
+    flatten_text2vision_attn = compressed_attn.get("flatten_text2vision_attn", None)
+    flatten_text2text_attn = compressed_attn.get("flatten_text2text_attn", None)
+
+    # 使用保存的 outlier 标记进行筛选（关键修复）
+    outlier_flag = compressed_attn.get("outlier_flag", None)
+    bad_flag = compressed_attn.get("bad_flag", None)
     
+    if outlier_flag is None:
+        # 如果没有保存 outlier 标记，重新计算（向后兼容）
+        spike_patch_idx = compressed_attn.get("spike_patch_idx", -1)
+        if spike_patch_idx == -1:
+            spike_patch_idx = None
+        spike_patch_idx_new, outlier_idx = detect_single_extreme_values_in_vlm_attn(
+            flatten_text2vision_attn, ratio=50.0, dominance_ratio=5.0
+        )
+        outlier_flag = torch.zeros(flatten_text2vision_attn.shape[0], device=flatten_text2vision_attn.device, dtype=torch.bool)
+        if outlier_idx is not None and outlier_idx.numel() > 0:
+            outlier_flag[outlier_idx] = True
+        if spike_patch_idx is None:
+            bad_flag = torch.zeros_like(outlier_flag)
+        else:
+            _, bad_flag = detect_attn_spike_by_share(flatten_text2vision_attn, spike_patch_idx, 0.3)
+    
+    outlier_tokens_num = int(outlier_flag.sum().item())
+    all_tokens_num = int(outlier_flag.shape[0])
+
+    device = flatten_text2vision_attn.device
+    Ntok = flatten_text2vision_attn.shape[0]
+
+    # 筛选有效 token（使用保存的 outlier 标记）
+    keep_mask = (~outlier_flag) & (~bad_flag)
+    if not keep_mask.any():
+        keep_mask = torch.ones_like(keep_mask)
+    
+    valid_filtered_token = keep_mask
+    
+    # 检查 keep_indices 是否在有效范围内
+    keep_indices_o_all = torch.tensor(keep_indices_o_all, device=device)
+    keep_indices_o_all = keep_indices_o_all[keep_indices_o_all < Ntok]
+    
+    if len(keep_indices_i) == 0 or flatten_text2text_attn.shape[1] == 0:
+        fallback_map = normalize_heatmap(
+            custom_weighted_sum(flatten_text2vision_attn, torch.ones(Ntok, dtype=torch.bool, device=device)),
+            grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+        )
+        if save_fig:
+            save_path = save_name.replace('.png', '_global_attention.png')
+            heatmap_visual(fallback_map, image, title='original_global_attention', save_name=save_path)
+        return fallback_map, 1.0, outlier_tokens_num, all_tokens_num
+
+    # 提取 prompt2text 中对应 keep_indices_i 的部分
+    filtered_prompt2output_text = flatten_text2text_attn[:, keep_indices_i]
+    
+    # 选择有效的行
     try:
         selected_row_idx = valid_filtered_token.nonzero(as_tuple=True)[0]
         if selected_row_idx.numel() == 0:
             raise ValueError("No kept rows matched output token filter.")
-        selected_prompt2text = filtered_prompt2output_text[selected_row_idx][:, keep_indices_i]
+        selected_prompt2text = flatten_text2text_attn[selected_row_idx][:, keep_indices_i]
     except:
+        fallback_map = normalize_heatmap(
+            custom_weighted_sum(flatten_text2vision_attn, torch.ones(Ntok, dtype=torch.bool, device=device)),
+            grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+        )
         if save_fig:
-            save_path = save_name.replace(f'{to_change}','_global_attention.png')
-            heatmap_visual(attn_over_image_np1, image, title='original_global_attention', save_name=save_path)
-        return attn_over_image_np1, 1.0, outlier_tokens_num, all_tokens_num
-    
+            save_path = save_name.replace('.png', '_global_attention.png')
+            heatmap_visual(fallback_map, image, title='original_global_attention', save_name=save_path)
+        return fallback_map, 1.0, outlier_tokens_num, all_tokens_num
+
+    # 计算 token 权重
     if with_tag:
-        index_all, threshold_all, summed_all, summed_weights = get_threshold_and_weight_from_sum(filtered_prompt2output_text, 0, 1)
+        index_all, threshold_all, summed_all, summed_weights = get_threshold_and_weight_from_sum(
+            filtered_prompt2output_text, 0, 1
+        )
     else:
-        index_all, threshold_all, summed_all, summed_weights = get_threshold_and_weight_from_sum(filtered_prompt2output_text, 5, 6)
-    
+        index_all, threshold_all, summed_all, summed_weights = get_threshold_and_weight_from_sum(
+            filtered_prompt2output_text, 5, 6
+        )
+
     summed = summed_all[valid_filtered_token]
     threshold = summed.median()
     valid_sum_index_all = summed_all >= threshold
 
-    par_info_all = get_par_from_attention_fast(vlm_attn, 0.17, grid_height, grid_width)
+    # 计算空间一致性
+    par_info_all = get_par_from_attention_fast(flatten_text2vision_attn, 0.17, grid_height, grid_width)
     valid_par_index_all = par_info_all <= 0.5
 
+    # 候选 token 筛选
     candidate_se_compute = valid_filtered_token & valid_par_index_all
     cand_idx = candidate_se_compute.nonzero(as_tuple=True)[0]
     candidate_all = valid_filtered_token & valid_par_index_all & valid_sum_index_all
     cand_all_idx = candidate_all.nonzero(as_tuple=True)[0]
-    
+
     if cand_all_idx.numel() <= 3:
-        return normalize_heatmap(custom_weighted_sum(vlm_attn, valid_filtered_token & valid_sum_index_all), grid_height, height, width, gamma_factor=1, grid_width=grid_width), 1.0, outlier_tokens_num, all_tokens_num
-    
+        result = normalize_heatmap(
+            custom_weighted_sum(flatten_text2vision_attn, valid_filtered_token & valid_sum_index_all), 
+            grid_height, height, width, gamma_factor=1, grid_width=grid_width
+        )
+        return result, 1.0, outlier_tokens_num, all_tokens_num
+
+    # 计算空间熵
     se_info_all = torch.full((Ntok,), float("inf"), device=device, dtype=torch.float32)
     se_list_all = [
         {
@@ -981,49 +1042,66 @@ def optimized_get_attention_from_saved_per_layer_head_fast(
         }
         for _ in range(Ntok)
     ]
-    se_sub, se_list_sub, _, _ = get_spatial_entropy_from_attention_fast(
-        vlm_attn[cand_idx],
-        grid_height=grid_height,
-        grid_width=grid_width
-    )
-    se_info_all[cand_idx] = se_sub
-    for local_i, global_i in enumerate(cand_idx.tolist()):
-        se_list_all[global_i] = {
-            **se_list_sub[local_i],
-            "valid": True,
-            "skipped": False
-        }
+    
+    if cand_idx.numel() > 0:
+        se_sub, se_list_sub, _, _ = get_spatial_entropy_from_attention_fast(
+            flatten_text2vision_attn[cand_idx],
+            grid_height=grid_height,
+            grid_width=grid_width
+        )
+        se_info_all[cand_idx] = se_sub
+        for local_i, global_i in enumerate(cand_idx.tolist()):
+            se_list_all[global_i] = {
+                **se_list_sub[local_i],
+                "valid": True,
+                "skipped": False
+            }
+    
     valid_se_isfinite = torch.isfinite(se_info_all)
     se_pool_mask = valid_filtered_token & valid_sum_index_all & valid_se_isfinite & valid_par_index_all
     se_pool = se_info_all[se_pool_mask]
+    
     try:
         threshold_se = elbow_chord(se_pool.detach().cpu().numpy())
     except Exception:
         threshold_se = 10.0
-    
+
     valid_se_index_all = se_info_all < threshold_se
-    final_valid_index_reasoning = valid_filtered_token & valid_sum_index_all & valid_se_isfinite & valid_se_index_all & valid_par_index_all
+    final_valid_index_reasoning = (
+        valid_filtered_token & valid_sum_index_all & valid_se_isfinite & 
+        valid_se_index_all & valid_par_index_all
+    )
 
     if final_valid_index_reasoning.sum().item() < 3:
-        return normalize_heatmap(custom_weighted_sum(vlm_attn, candidate_se_compute), grid_height, height, width, gamma_factor=1, grid_width=grid_width), 1.0, outlier_tokens_num, all_tokens_num
-    
+        result = normalize_heatmap(
+            custom_weighted_sum(flatten_text2vision_attn, candidate_se_compute), 
+            grid_height, height, width, gamma_factor=1, grid_width=grid_width
+        )
+        return result, 1.0, outlier_tokens_num, all_tokens_num
+
+    # 生成最终可视化
     final_valid_image_reasoning = normalize_heatmap(
-        custom_weighted_sum(vlm_attn, final_valid_index_reasoning.to(torch.int)),
+        custom_weighted_sum(flatten_text2vision_attn, final_valid_index_reasoning.to(torch.int)), 
         grid_height, height, width, gamma_factor=1, grid_width=grid_width
     )
     final_index = final_valid_index_reasoning.nonzero(as_tuple=True)[0]
-    
-    full_weights, valid_indices, final_token_weights, sorted_valid_indices = get_weight_with_indices(se_info_all, summed_all, final_valid_index_reasoning)
-    
+
+    full_weights, valid_indices, final_token_weights, sorted_valid_indices = get_weight_with_indices(
+        se_info_all, summed_all, final_valid_index_reasoning
+    )
+
     topk = min(10, final_token_weights.numel())
     topk_final_token_weights, topk_index = torch.topk(final_token_weights, topk, largest=True, sorted=False)
     topk_final_index = final_index[topk_index]
-    orig_indices_for_topk = kept_indices[topk_final_index].tolist()
-    final_keep_tokens = [token_list_decoded[i] for i in orig_indices_for_topk]
+    
+    # 修正 token 索引映射
+    orig_indices_for_topk = topk_final_index.tolist()
+    final_keep_tokens = [token_list_decoded_extended[i % len(token_list_decoded)] for i in orig_indices_for_topk]
+    
     topk_final_valid_index_reasoning = torch.zeros_like(final_valid_index_reasoning)  
     topk_final_valid_index_reasoning[topk_final_index] = True
-    
-    valid_sc_raw = full_weights > (1/sorted_valid_indices.shape[0])
+
+    valid_sc_raw = full_weights > (1 / sorted_valid_indices.shape[0])
     valid_sc = torch.zeros(summed_all.shape[0], dtype=torch.bool)
     try:
         if pred_has_anomaly:
@@ -1035,20 +1113,52 @@ def optimized_get_attention_from_saved_per_layer_head_fast(
             valid_sc = final_valid_index_reasoning
     except:
         valid_sc = final_valid_index_reasoning
-    
-    SC_new = compute_spatial_consistency_fast(vlm_attn[valid_sc][:], grid_height, grid_width, top_k_percent=10)
-    aggreated_final_image = normalize_heatmap(aggregate_cross_attentions(vlm_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights), grid_height, height, width, gamma_factor=1, grid_width=grid_width)
-    
+
+    SC_new = compute_spatial_consistency_fast(
+        flatten_text2vision_attn[valid_sc][:], grid_height, grid_width, top_k_percent=10
+    )
+    aggreated_final_image = normalize_heatmap(
+        aggregate_cross_attentions(
+            flatten_text2vision_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights
+        ), 
+        grid_height, height, width, gamma_factor=1, grid_width=grid_width
+    )
+
     if return_aggreagate:
         if save_fig:
-            visual_attn_token2image(final_keep_tokens, vlm_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_aggreated_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning], topk_final_token_weights)
-            save_path = save_name.replace(f'{to_change}', f'_final_aggreated_image_fast.png')
-            heatmap_visual(aggreated_final_image, image, title=f'SC: {SC_new:.2f}\n {output_text}', save_name=save_path)
+            visual_attn_token2image(
+                final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], 
+                save_name.replace('.png', '_final_aggreated_attention_fast.png'), 
+                grid_height, grid_width, height, width, image, 
+                summed_all[topk_final_valid_index_reasoning], 
+                se_info_all[topk_final_valid_index_reasoning], 
+                threshold, threshold_se, 
+                par_info_all[topk_final_valid_index_reasoning], 
+                topk_final_token_weights
+            )
+            save_path = save_name.replace('.png', '_final_aggreated_image_fast.png')
+            heatmap_visual(
+                aggreated_final_image, image, 
+                title=f'SC: {SC_new:.2f}\n{output_text}', 
+                save_name=save_path
+            )
         return aggreated_final_image, SC_new, outlier_tokens_num, all_tokens_num
     else:
         if save_fig:
-            visual_attn_token2image(final_keep_tokens, vlm_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_filtered_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning])
-            save_path = save_name.replace(f'{to_change}', f'_final_valid_image_fast.png')
-            heatmap_visual(final_valid_image_reasoning, image, title=f'SC: {SC_new:.2f}', save_name=save_path)
+            visual_attn_token2image(
+                final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], 
+                save_name.replace('.png', '_final_filtered_attention_fast.png'), 
+                grid_height, grid_width, height, width, image, 
+                summed_all[topk_final_valid_index_reasoning], 
+                se_info_all[topk_final_valid_index_reasoning], 
+                threshold, threshold_se, 
+                par_info_all[topk_final_valid_index_reasoning]
+            )
+            save_path = save_name.replace('.png', '_final_valid_image_fast.png')
+            heatmap_visual(
+                final_valid_image_reasoning, image, 
+                title=f'SC: {SC_new:.2f}', 
+                save_name=save_path
+            )
 
     return final_valid_image_reasoning, SC_new, outlier_tokens_num, all_tokens_num
