@@ -5,7 +5,7 @@ __pycache__/
 .trae/
 # C extensions
 *.so
-
+*.md
 # Distribution / packaging
 .Python
 build/

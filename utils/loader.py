@@ -11,6 +11,8 @@ def load_dataset(dataset_path):
         dataset = pd.read_excel(dataset_path)
     elif dataset_path.endswith(".tsv"):
         dataset = pd.read_csv(dataset_path, sep="\t")
+    else:
+        raise ValueError(f"Unsupported dataset format: {dataset_path}")
     return dataset
 
 

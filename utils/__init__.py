@@ -5,12 +5,16 @@ from .qkvfp32_monkey_patch import (
     use_monkey_patch_qwen2_5vl_qkvfp32_eager_encoderselfattn,
     use_monkey_patch_qwen2_5vl_qkvfp32_eager_visionattn,
 )
-from .util import get_resize_info, move_to_cpu, resize_image, send2api, toliststr
+from .util import build_model_name, get_resize_info, move_to_cpu, resize_image, send2api, toliststr
 from .visual_tools import (
+    evaluate_saved_attention_fast,
+    evaluate_saved_attention_sink_first,
     get_attention_from_saved_per_layer_head_fast,
     get_saved_per_layer_head_attention,
+    optimized_get_attention_from_saved_per_layer_head_fast_sink_first,
     optimized_get_attention_from_saved_per_layer_head_fast,
     optimized_get_saved_per_layer_head_attention,
+    optimized_save_per_layer_head_attention,
 )
 
 __all__ = [
@@ -20,9 +24,11 @@ __all__ = [
     "dynamic_preprocess",
     "load_image",
     "resize_image",
+    "build_model_name",
     "get_resize_info",
     "get_saved_per_layer_head_attention",
     "optimized_get_saved_per_layer_head_attention",
+    "optimized_save_per_layer_head_attention",
     "toliststr",
     "send2api",
     "load_dataset",
@@ -32,7 +38,10 @@ __all__ = [
     "calc_binary_classification_metrics",
     "use_monkey_patch_qwen2_5vl_qkvfp32_eager_encoderselfattn",
     "use_monkey_patch_qwen2_5vl_qkvfp32_eager_visionattn",
+    "evaluate_saved_attention_fast",
+    "evaluate_saved_attention_sink_first",
     "get_attention_from_saved_per_layer_head_fast",
     "optimized_get_attention_from_saved_per_layer_head_fast",
+    "optimized_get_attention_from_saved_per_layer_head_fast_sink_first",
 ]
 

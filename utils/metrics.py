@@ -57,23 +57,38 @@ def compute_seg_metrics(dct):
         auroc_pixel = roc_auc_score(gt,pred)
         ap_pixel = average_precision_score(gt, pred)
         all_precisions, all_recalls, all_thresholds = precision_recall_curve(gt, pred)
-        f1_scores_pixel = (2 * all_precisions * all_recalls) /(all_precisions + all_recalls)
-        rms_f1_scores = f1_scores_pixel[np.isfinite(f1_scores_pixel)]
-        f1_max = np.max(rms_f1_scores)
-        f1_max_index = np.argmax(rms_f1_scores)
-        
-        precision_f1max = all_precisions[f1_max_index]
-        recall_f1max = all_recalls[f1_max_index]
-        threshold_f1max = all_thresholds[f1_max_index]
-        acc_f1max = compute_acc(gt,pred,threshold_f1max)
-        
-        distance = (1 - all_recalls)**2 + (1 - all_precisions)**2
-        min_dis_idx = np.argmin(distance)
-        f1_min_dis = f1_scores_pixel[min_dis_idx]
-        precision_min_dis = all_precisions[min_dis_idx]
-        recall_min_dis = all_recalls[min_dis_idx]
-        threshold_min_dis = all_thresholds[min_dis_idx]       
-        acc_min_dis = compute_acc(gt,pred,threshold_min_dis)
+        if all_thresholds.size == 0:
+            precision_f1max = float(all_precisions[0])
+            recall_f1max = float(all_recalls[0])
+            f1_max = 0.0 if (precision_f1max + recall_f1max) == 0 else (2 * precision_f1max * recall_f1max) / (precision_f1max + recall_f1max)
+            threshold_f1max = 0.5
+            acc_f1max = compute_acc(gt, pred, threshold_f1max)
+
+            precision_min_dis = precision_f1max
+            recall_min_dis = recall_f1max
+            f1_min_dis = f1_max
+            threshold_min_dis = threshold_f1max
+            acc_min_dis = acc_f1max
+        else:
+            all_precisions_t = all_precisions[:-1]
+            all_recalls_t = all_recalls[:-1]
+            f1_scores_t = (2 * all_precisions_t * all_recalls_t) / np.clip((all_precisions_t + all_recalls_t), 1e-12, None)
+            f1_scores_t = np.nan_to_num(f1_scores_t, nan=0.0, posinf=0.0, neginf=0.0)
+
+            f1_max_index = int(np.argmax(f1_scores_t))
+            f1_max = float(f1_scores_t[f1_max_index])
+            precision_f1max = float(all_precisions_t[f1_max_index])
+            recall_f1max = float(all_recalls_t[f1_max_index])
+            threshold_f1max = float(all_thresholds[f1_max_index])
+            acc_f1max = compute_acc(gt, pred, threshold_f1max)
+
+            distance = (1 - all_recalls_t) ** 2 + (1 - all_precisions_t) ** 2
+            min_dis_idx = int(np.argmin(distance))
+            f1_min_dis = float(f1_scores_t[min_dis_idx])
+            precision_min_dis = float(all_precisions_t[min_dis_idx])
+            recall_min_dis = float(all_recalls_t[min_dis_idx])
+            threshold_min_dis = float(all_thresholds[min_dis_idx])
+            acc_min_dis = compute_acc(gt, pred, threshold_min_dis)
         
         
         seg_metrics["split"].append(category)

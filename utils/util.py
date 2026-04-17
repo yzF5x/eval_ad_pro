@@ -32,6 +32,10 @@ def get_resize_info(model_path):
         return -1 , -1
     return merged_patch_size , max_size
 
+def build_model_name(model_path: str, with_tag: bool) -> str:
+    model_name = os.path.basename(model_path.rstrip("/\\"))
+    return f"{model_name}-with-tag" if with_tag else model_name
+
 def resize_image(images , max_size , merged_patch_size):
     if max_size == -1:
         return images
@@ -49,7 +53,7 @@ def resize_image(images , max_size , merged_patch_size):
         processed_images.append(processed_image)
     return processed_images
 
-def send2api(prediction , prompt = "" , model = "google/gemini-flash-1.5"):
+def send2api(prediction , prompt = "" , model = "google/gemini-flash-1.5", openrouter_api_key: str = ""):
     """
         无法直接提取答案时 调api 让api模型根据测试模型的文本输出得到答案
         prediction是测试模型的文本输出
@@ -60,9 +64,9 @@ def send2api(prediction , prompt = "" , model = "google/gemini-flash-1.5"):
     """
     prompt = "Determine whether there is an anomaly or defect by the semantics of the following paragraph.  If there is, answer \"yes\", otherwise answer \"no\".  No other words are allowed except the number.  No punctuation is allowed. The paragraph is : "
     url = "https://openrouter.ai/api/v1/chat/completions"
-    ssh_key = os.getenv("OPENROUTER_API_KEY", "")
+    ssh_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
     if not ssh_key:
-        return "Something Wrong with API"
+        raise RuntimeError("OPENROUTER_API_KEY is not set.")
     headers= {
             "Authorization": f"Bearer " + ssh_key
     }
@@ -80,17 +84,29 @@ def send2api(prediction , prompt = "" , model = "google/gemini-flash-1.5"):
           }
         ]
     }
-    response = requests.post(url = url, headers=headers, json=payload)
-    if response.status_code == 200:
+    try:
+        response = requests.post(url=url, headers=headers, json=payload, timeout=(5, 20))
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise RuntimeError("OpenRouter request failed.") from exc
+
+    try:
         json_llm_answer = response.json()
-        choices = json_llm_answer.get('choices',[])
-        d = choices[0]
-        messages = d.get('message',{})
-        content = messages.get('content','')
-        print(prediction,"\n" ,content,"\n")
-        return content
-    else:
-        return "Something Wrong with API"
+    except ValueError as exc:
+        raise RuntimeError("OpenRouter response is not valid JSON.") from exc
+
+    choices = json_llm_answer.get("choices", [])
+    if not choices:
+        raise RuntimeError("OpenRouter response does not contain choices.")
+
+    messages = choices[0].get("message", {})
+    content = messages.get("content", "")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("OpenRouter response content is empty.")
+
+    content = content.strip()
+    print(prediction, "\n", content, "\n")
+    return content
     
 def toliststr(s):
     """

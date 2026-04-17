@@ -1,6 +1,7 @@
 shared:
   model_path: ZhipuAI/GLM-4.1V-9B-Thinking
   model_type: glm
+  OPENROUTER_API_KEY: ""
   with_tag: false
   vision_token_id: 151343
   patch_size: 14
@@ -20,4 +21,6 @@ evaluator:
   global_save_fig: true
   normal_set_zero: false
   overwrite: false
-  return_aggreagate: true
+  return_aggregate: true
+  attention_eval_mode: fast
+  topk_spike_patches: 3

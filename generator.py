@@ -8,7 +8,7 @@ import torch
 from configs.config_loader import build_stage_namespace
 from configs.dataset_config import DATASET_DEFAULTS, QUESTION_WITH_TAG
 from models.factory import HandlerFactory
-from utils import load_dataset, move_to_cpu, toliststr
+from utils import build_model_name, load_dataset, move_to_cpu, toliststr
 
 
 def _get_input_token_len(inputs) -> int:
@@ -32,9 +32,7 @@ def main(args):
         attn_implementation="eager",
     )
 
-    model_name = handler.model_name
-    if args.with_tag:
-        model_name += "-with-tag"
+    model_name = build_model_name(args.model_path, args.with_tag)
 
     save_dir = os.path.join(args.save_dir, model_name)
     os.makedirs(save_dir, exist_ok=True)
@@ -119,6 +117,7 @@ def main(args):
             "id": sample_id,
             "category": data.get("category", ""),
             "pred_reasoning": output_text,
+            "answer": data.get("answer", ""),
             "gt_reasoning": data.get("answer", ""),
         }
         print(f"Saved {save_path}")

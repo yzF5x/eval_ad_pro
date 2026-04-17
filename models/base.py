@@ -19,7 +19,7 @@ from utils.visual_tools import (
     get_weight_with_indices,
     heatmap_visual,
     normalize_heatmap,
-    row_normalize,
+    optimized_save_per_layer_head_attention,
     visual_attn_token2image,
 )
 
@@ -153,135 +153,17 @@ class BaseModelHandler(ABC):
         **kwargs,
     ) -> Tuple[Any, Dict[str, Any]]:
         cfg = self._resolve_attention_params(**kwargs)
-        return self._save_attention_from_generated(
-            generated=generated,
-            input_len=input_len,
+        return optimized_save_per_layer_head_attention(
+            tokenizer=self.tokenizer,
+            output_ids=generated,
+            input_token_len=input_len,
             processed_image=processed_image,
+            processed_prompt=prompt,
             patch_size=int(cfg["patch_size"]),
             merge_size=int(cfg["merge_size"]),
+            sequences=generated.get("sequences", None),
             vision_token_id=int(cfg["vision_token_id"]),
-            outlier_ratio=float(cfg["outlier_ratio"]),
-            dominance_ratio=float(cfg["dominance_ratio"]),
-            outlier_share_thr=float(cfg["outlier_share_thr"]),
         )
-
-    def _save_attention_from_generated(
-        self,
-        generated: Dict[str, Any],
-        input_len: int,
-        processed_image: Any,
-        patch_size: int,
-        merge_size: int,
-        vision_token_id: int,
-        outlier_ratio: float,
-        dominance_ratio: float,
-        outlier_share_thr: float,
-    ) -> Tuple[Any, Dict[str, Any]]:
-        sequences = generated.get("sequences", None)
-        if sequences is None:
-            raise ValueError("Saving attention requires generated['sequences'].")
-
-        prompt_attentions = generated["attentions"][0]
-        num_layers = len(prompt_attentions)
-        num_heads = prompt_attentions[0].size(1)
-        prompt_len = prompt_attentions[0].size(-1)
-        if prompt_len != input_len:
-            raise ValueError(f"Expected prompt_len={input_len}, got {prompt_len}")
-
-        image = processed_image[-1]
-        width, height = image.size
-        fallback_grid_width, fallback_grid_height = self._grid_shape_for_image(
-            width=width, height=height, patch_size=patch_size, merge_size=merge_size
-        )
-        fallback_num_patches = int(fallback_grid_width * fallback_grid_height)
-
-        output_token_len = len(generated["attentions"]) - 1
-        output_token_start = input_len
-        output_token_end = output_token_start + output_token_len
-
-        flat_ids = sequences[0, :output_token_start].view(-1)
-        vision_token_start, vision_token_end = self._vision_token_span(
-            flat_ids=flat_ids,
-            vision_token_id=vision_token_id,
-            fallback_num_patches=fallback_num_patches,
-        )
-        num_patches = int(vision_token_end - vision_token_start)
-        prompt_text_len = int(output_token_start - vision_token_end)
-        if prompt_text_len < 0:
-            raise ValueError("Computed prompt_text_len < 0. Check vision token span or patch settings.")
-
-        attn_to_vision = torch.zeros(
-            num_layers, num_heads, output_token_len, num_patches, dtype=torch.float32
-        )
-        attn_to_text = torch.zeros(
-            num_layers, num_heads, output_token_len, prompt_text_len, dtype=torch.float32
-        )
-
-        for t in range(1, len(generated["attentions"])):
-            token_idx = input_len + (t - 1)
-            layer_tuple = generated["attentions"][t]
-            for layer_idx, layer_attn in enumerate(layer_tuple):
-                attn = layer_attn.squeeze(0)
-                if attn.dim() == 3:
-                    if attn.size(1) == 1:
-                        row = attn[:, 0, :token_idx + 1]
-                    else:
-                        row = attn[:, -1, :token_idx + 1]
-                elif attn.dim() == 2:
-                    row = attn[:, :token_idx + 1]
-                else:
-                    raise ValueError(f"Unexpected attention shape: {attn.shape}")
-
-                row = row.detach().to(torch.float32).cpu()
-                attn_to_vision[layer_idx, :, t - 1, :] = row[:, vision_token_start:vision_token_end]
-                if prompt_text_len > 0:
-                    attn_to_text[layer_idx, :, t - 1, :] = row[:, vision_token_end:output_token_start]
-
-        vlm_attn = attn_to_vision.flatten(start_dim=0, end_dim=2)
-        vlm_attn = row_normalize(vlm_attn)
-        prompt2text_attn_all = attn_to_text.flatten(start_dim=0, end_dim=2)
-
-        spike_patch_idx, outlier_idx = detect_single_extreme_values_in_vlm_attn(
-            vlm_attn, ratio=outlier_ratio, dominance_ratio=dominance_ratio
-        )
-        outlier_flag = torch.zeros(vlm_attn.shape[0], device=vlm_attn.device, dtype=torch.bool)
-        if outlier_idx is not None and outlier_idx.numel() > 0:
-            outlier_flag[outlier_idx] = True
-        outlier_tokens_num = int(outlier_flag.sum().item())
-        all_tokens_num = int(outlier_flag.shape[0])
-
-        if spike_patch_idx is None:
-            bad_flag = torch.zeros_like(outlier_flag)
-        else:
-            _, bad_flag = detect_attn_spike_by_share(vlm_attn, spike_patch_idx, outlier_share_thr)
-
-        compressed_attn = {
-            "vlm_attn": vlm_attn,
-            "prompt2text_attn": prompt2text_attn_all,
-            "outlier_flag": outlier_flag,
-            "bad_flag": bad_flag,
-            "vlm_attn_normalized": True,
-            "outlier_tokens_num": outlier_tokens_num,
-            "all_tokens_num": all_tokens_num,
-            "spike_patch_idx": spike_patch_idx if spike_patch_idx is not None else -1,
-        }
-
-        meta = {
-            "input_token_len": input_len,
-            "output_token_len": output_token_len,
-            "output_token_start": output_token_start,
-            "output_token_end": output_token_end,
-            "vision_token_start": vision_token_start,
-            "vision_token_end": vision_token_end,
-            "num_patches": int(num_patches),
-            "prompt_text_len": prompt_text_len,
-            "layers_num": num_layers,
-            "heads_num": num_heads,
-            "patch_size": patch_size,
-            "merge_size": merge_size,
-            "vision_token_id": vision_token_id,
-        }
-        return compressed_attn, meta
 
     def evaluate_saved_attention(
         self,
@@ -299,7 +181,7 @@ class BaseModelHandler(ABC):
         layers_num = int(cfg["layers_num"])
         heads_num = int(cfg["heads_num"])
         vision_token_id = int(cfg["vision_token_id"])
-        return_aggreagate = bool(kwargs.get("return_aggreagate", False))
+        return_aggregate = bool(kwargs.get("return_aggregate", kwargs.get("return_aggreagate", False)))
         pred_has_anomaly = kwargs.get("pred_has_anomaly", None)
         save_fig = bool(kwargs.get("save_fig", False))
         with_tag = bool(kwargs.get("with_tag", True))
@@ -388,7 +270,7 @@ class BaseModelHandler(ABC):
         if len(keep_indices_i) == 0 or prompt2text_attn_all.shape[1] == 0:
             fallback_map = normalize_heatmap(
                 custom_weighted_sum(vlm_attn, torch.ones(ntok, dtype=torch.bool, device=device)),
-                grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+                grid_height, height, width, grid_width=grid_width,
             )
             if save_fig:
                 save_path = save_name.replace(".png", "_global_attention.png")
@@ -404,7 +286,7 @@ class BaseModelHandler(ABC):
         except Exception:
             fallback_map = normalize_heatmap(
                 custom_weighted_sum(vlm_attn, torch.ones(ntok, dtype=torch.bool, device=device)),
-                grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+                grid_height, height, width, grid_width=grid_width,
             )
             if save_fig:
                 save_path = save_name.replace(".png", "_global_attention.png")
@@ -430,7 +312,7 @@ class BaseModelHandler(ABC):
         if cand_all_idx.numel() <= 3:
             result = normalize_heatmap(
                 custom_weighted_sum(vlm_attn, valid_filtered_token & valid_sum_index_all),
-                grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+                grid_height, height, width, grid_width=grid_width,
             )
             return result, 1.0, outlier_tokens_num, all_tokens_num
 
@@ -457,13 +339,13 @@ class BaseModelHandler(ABC):
         if final_valid_index_reasoning.sum().item() < 3:
             result = normalize_heatmap(
                 custom_weighted_sum(vlm_attn, candidate_se_compute),
-                grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+                grid_height, height, width, grid_width=grid_width,
             )
             return result, 1.0, outlier_tokens_num, all_tokens_num
 
         final_valid_image_reasoning = normalize_heatmap(
             custom_weighted_sum(vlm_attn, final_valid_index_reasoning.to(torch.int)),
-            grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+            grid_height, height, width, grid_width=grid_width,
         )
         final_index = final_valid_index_reasoning.nonzero(as_tuple=True)[0]
         full_weights, _, final_token_weights, sorted_valid_indices = get_weight_with_indices(
@@ -494,10 +376,10 @@ class BaseModelHandler(ABC):
         sc_new = compute_spatial_consistency_fast(vlm_attn[valid_sc][:], grid_height, grid_width, top_k_percent=10)
         aggreated_final_image = normalize_heatmap(
             aggregate_cross_attentions(vlm_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights),
-            grid_height, height, width, gamma_factor=1, grid_width=grid_width,
+            grid_height, height, width, grid_width=grid_width,
         )
 
-        if return_aggreagate:
+        if return_aggregate:
             if save_fig:
                 visual_attn_token2image(
                     final_keep_tokens, vlm_attn[topk_final_valid_index_reasoning][:],
