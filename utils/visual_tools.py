@@ -1,24 +1,18 @@
-from io import BytesIO
 from PIL import Image
-import requests
 import torch
 import numpy as np
-import cv2
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from typing import Any, Dict, List, Tuple, Optional
 import math
-import seaborn as sns
 import spacy
 
-from bisect import bisect_left, bisect_right
 from scipy.ndimage import label
 
 import re
 from collections import OrderedDict
-import time
 
 _STRUCTURE_3x3 = np.ones((3, 3), dtype=np.int32)
 _SPACY_PIPELINES: Dict[str, Any] = {}
@@ -779,12 +773,15 @@ def get_attention_from_saved_per_layer_head_fast(
     full_weights, valid_indices, final_token_weights, sorted_valid_indices = get_weight_with_indices(se_info_all, summed_all, final_valid_index_reasoning)
     
     topk = min(10, final_token_weights.numel())
-    topk_final_token_weights, topk_index = torch.topk(final_token_weights, topk, largest=True, sorted=False)
+    topk_final_token_weights, topk_index = torch.topk(final_token_weights, topk, largest=True, sorted=True)
     topk_final_index = final_index[topk_index]
-    final_keep_tokens = [token_list_decoded[i] for i in topk_final_index.tolist()]
-    topk_final_valid_index_reasoning = torch.zeros_like(final_valid_index_reasoning)  
-    topk_final_valid_index_reasoning[topk_final_index] = True
+    topk_final_valid_attn = flatten_text2vision_attn[topk_final_index]
+    topk_final_valid_summed = summed_all[topk_final_index]
+    topk_final_valid_se_info = se_info_all[topk_final_index]
+    topk_final_valid_par_info = par_info_all[topk_final_index]
     
+    final_keep_tokens = [token_list_decoded[i] for i in topk_final_index.tolist()]
+
     valid_sc_raw = full_weights > (1/sorted_valid_indices.shape[0])
     valid_sc = torch.zeros(summed_all.shape[0], dtype=torch.bool)
     try:
@@ -799,17 +796,18 @@ def get_attention_from_saved_per_layer_head_fast(
         valid_sc = final_valid_index_reasoning
     
     SC_new = compute_spatial_consistency_fast(flatten_text2vision_attn[valid_sc][:], grid_height, grid_width, top_k_percent=10)
-    aggreated_final_image = normalize_heatmap(aggregate_cross_attentions(flatten_text2vision_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights), grid_height, height, width, grid_width=grid_width)
+    aggreated_final_image = normalize_heatmap(aggregate_cross_attentions(topk_final_valid_attn, topk_final_token_weights), grid_height, height, width, grid_width=grid_width)
+
     
     if return_aggregate:
         if save_fig:
-            visual_attn_token2image(final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_aggreated_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning], topk_final_token_weights)
+            visual_attn_token2image(final_keep_tokens, topk_final_valid_attn, save_name.replace('.png','_final_aggreated_attention_fast.png'), grid_height, grid_width, height, width, image, topk_final_valid_summed, topk_final_valid_se_info, threshold, threshold_se, topk_final_valid_par_info, topk_final_token_weights)
             save_path = save_name.replace(f'{to_change}', f'_final_aggreated_image_fast.png')
             heatmap_visual(aggreated_final_image, image, title=f'SC: {SC_new:.2f}\n {output_text}', save_name=save_path)
         return aggreated_final_image, SC_new, outlier_tokens_num, all_tokens_num
     else:
         if save_fig:
-            visual_attn_token2image(final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], save_name.replace('.png','_final_filtered_attention_fast.png'), grid_height, grid_width, height, width, image, summed_all[topk_final_valid_index_reasoning], se_info_all[topk_final_valid_index_reasoning], threshold, threshold_se, par_info_all[topk_final_valid_index_reasoning])
+            visual_attn_token2image(final_keep_tokens, topk_final_valid_attn, save_name.replace('.png','_final_filtered_attention_fast.png'), grid_height, grid_width, height, width, image, topk_final_valid_summed, topk_final_valid_se_info, threshold, threshold_se, topk_final_valid_par_info)
             save_path = save_name.replace(f'{to_change}', f'_final_valid_image_fast.png')
             heatmap_visual(final_valid_image_reasoning, image, title=f'SC: {SC_new:.2f}', save_name=save_path)
 
@@ -1140,13 +1138,14 @@ def evaluate_saved_attention_fast(
     )
 
     topk = min(10, final_token_weights.numel())
-    topk_final_token_weights, topk_index = torch.topk(final_token_weights, topk, largest=True, sorted=False)
+    topk_final_token_weights, topk_index = torch.topk(final_token_weights, topk, largest=True, sorted=True)
     topk_final_index = final_index[topk_index]
+    topk_final_valid_attn = flatten_text2vision_attn[topk_final_index]
+    topk_final_valid_summed = summed_all[topk_final_index]
+    topk_final_valid_se_info = se_info_all[topk_final_index]
+    topk_final_valid_par_info = par_info_all[topk_final_index]
     
     final_keep_tokens = [token_list_decoded[i] for i in topk_final_index.tolist()]
-    
-    topk_final_valid_index_reasoning = torch.zeros_like(final_valid_index_reasoning)  
-    topk_final_valid_index_reasoning[topk_final_index] = True
 
     valid_sc_raw = full_weights > (1 / sorted_valid_indices.shape[0])
     valid_sc = torch.zeros(summed_all.shape[0], dtype=torch.bool)
@@ -1166,7 +1165,7 @@ def evaluate_saved_attention_fast(
     )
     aggreated_final_image = normalize_heatmap(
         aggregate_cross_attentions(
-            flatten_text2vision_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights
+            topk_final_valid_attn, topk_final_token_weights
         ), 
         grid_height, height, width, grid_width=grid_width
     )
@@ -1174,13 +1173,13 @@ def evaluate_saved_attention_fast(
     if return_aggregate:
         if save_fig:
             visual_attn_token2image(
-                final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], 
+                final_keep_tokens, topk_final_valid_attn, 
                 save_name.replace(f'{to_change}', '_final_aggreated_attention_fast.png'), 
                 grid_height, grid_width, height, width, image, 
-                summed_all[topk_final_valid_index_reasoning], 
-                se_info_all[topk_final_valid_index_reasoning], 
+                topk_final_valid_summed, 
+                topk_final_valid_se_info, 
                 threshold, threshold_se, 
-                par_info_all[topk_final_valid_index_reasoning], 
+                topk_final_valid_par_info, 
                 topk_final_token_weights
             )
             save_path = save_name.replace(f'{to_change}', '_final_aggreated_image_fast.png')
@@ -1193,13 +1192,13 @@ def evaluate_saved_attention_fast(
     else:
         if save_fig:
             visual_attn_token2image(
-                final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:], 
+                final_keep_tokens, topk_final_valid_attn, 
                 save_name.replace(f'{to_change}', '_final_filtered_attention_fast.png'), 
                 grid_height, grid_width, height, width, image, 
-                summed_all[topk_final_valid_index_reasoning], 
-                se_info_all[topk_final_valid_index_reasoning], 
+                topk_final_valid_summed, 
+                topk_final_valid_se_info, 
                 threshold, threshold_se, 
-                par_info_all[topk_final_valid_index_reasoning]
+                topk_final_valid_par_info
             )
             save_path = save_name.replace(f'{to_change}', '_final_valid_image_fast.png')
             heatmap_visual(
@@ -1468,11 +1467,14 @@ def evaluate_saved_attention_sink_first(
     )
 
     topk = min(10, final_token_weights.numel())
-    topk_final_token_weights, topk_index = torch.topk(final_token_weights, topk, largest=True, sorted=False)
+    topk_=True)
     topk_final_index = final_index[topk_index]
+    topk_final_valid_attn = flatten_text2vision_attn[topk_final_index]
+    topk_final_valid_summed = summed_all[topk_final_index]
+    topk_final_valid_se_info = se_info_all[topk_final_index]
+    topk_final_valid_par_info = par_info_all[topk_final_index]
+    
     final_keep_tokens = [token_list_decoded[i] for i in topk_final_index.tolist()]
-    topk_final_valid_index_reasoning = torch.zeros_like(final_valid_index_reasoning)
-    topk_final_valid_index_reasoning[topk_final_index] = True
 
     valid_sc_raw = full_weights > (1 / sorted_valid_indices.shape[0])
     valid_sc = torch.zeros(summed_all.shape[0], dtype=torch.bool)
@@ -1492,7 +1494,7 @@ def evaluate_saved_attention_sink_first(
     )
     aggreated_final_image = normalize_heatmap(
         aggregate_cross_attentions(
-            flatten_text2vision_attn[topk_final_valid_index_reasoning][:], topk_final_token_weights
+            topk_final_valid_attn, topk_final_token_weights
         ),
         grid_height, height, width, grid_width=grid_width
     )
@@ -1500,13 +1502,13 @@ def evaluate_saved_attention_sink_first(
     if return_aggregate:
         if save_fig:
             visual_attn_token2image(
-                final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:],
+                final_keep_tokens, topk_final_valid_attn,
                 save_name.replace(f'{to_change}', '_final_aggreated_attention_fast_sink_first.png'),
                 grid_height, grid_width, height, width, image,
-                summed_all[topk_final_valid_index_reasoning],
-                se_info_all[topk_final_valid_index_reasoning],
+                topk_final_valid_summed,
+                topk_final_valid_se_info,
                 threshold, threshold_se,
-                par_info_all[topk_final_valid_index_reasoning],
+                topk_final_valid_par_info,
                 topk_final_token_weights
             )
             save_path = save_name.replace(f'{to_change}', '_final_aggreated_image_fast_sink_first.png')
@@ -1518,13 +1520,13 @@ def evaluate_saved_attention_sink_first(
     else:
         if save_fig:
             visual_attn_token2image(
-                final_keep_tokens, flatten_text2vision_attn[topk_final_valid_index_reasoning][:],
+                final_keep_tokens, topk_final_valid_attn,
                 save_name.replace(f'{to_change}', '_final_filtered_attention_fast_sink_first.png'),
                 grid_height, grid_width, height, width, image,
-                summed_all[topk_final_valid_index_reasoning],
-                se_info_all[topk_final_valid_index_reasoning],
+                topk_final_valid_summed,
+                topk_final_valid_se_info,
                 threshold, threshold_se,
-                par_info_all[topk_final_valid_index_reasoning]
+                topk_final_valid_par_info
             )
             save_path = save_name.replace(f'{to_change}', '_final_valid_image_fast_sink_first.png')
             heatmap_visual(
