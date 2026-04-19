@@ -78,6 +78,7 @@ def main(args):
             input_len=input_token_len,
             processed_image=processed_image,
             prompt=processed_prompt,
+            model_type=model_type,
             vision_token_id=args.vision_token_id,
             patch_size=args.patch_size,
             merge_size=args.merge_size,
@@ -135,4 +136,3 @@ if __name__ == "__main__":
     p.add_argument("--dataset", required=True, choices=sorted(DATASET_DEFAULTS.keys()))
     cli_args = p.parse_args()
     main(build_stage_namespace(cli_args.config, stage="generator", dataset=cli_args.dataset))
-

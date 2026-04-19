@@ -1,14 +1,14 @@
 shared:
-  model_path: zai-org/GLM-4.1V-9B-Thinking
-  model_type: glm
+  model_path: OpenGVLab/InternVL3-8B-HF
+  model_type: internvl
   OPENROUTER_API_KEY: 
   with_tag: true
-  vision_token_id: 151343
+  vision_token_id: 151667
   patch_size: 14
   merge_size: 2
-  layers_num: 40
-  heads_num: 32
-
+  layers_num: 28
+  heads_num: 28
+  
 generator:
   max_new_tokens: 1024
   overwrite: false

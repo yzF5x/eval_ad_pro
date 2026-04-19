@@ -1,12 +1,12 @@
 shared:
-  model_path: zai-org/GLM-4.1V-9B-Thinking
-  model_type: glm
-  OPENROUTER_API_KEY: 
-  with_tag: true
-  vision_token_id: 151343
+  model_path: OpenGVLab/InternVL3_5-4B-HF
+  model_type: internvl
+  OPENROUTER_API_KEY: ""
+  with_tag: false
+  vision_token_id: 151671
   patch_size: 14
   merge_size: 2
-  layers_num: 40
+  layers_num: 36
   heads_num: 32
 
 generator:
@@ -22,5 +22,5 @@ evaluator:
   normal_set_zero: false
   overwrite: false
   return_aggregate: true
-  attention_eval_mode: sink_first
+  attention_eval_mode: fast
   topk_spike_patches: 3

@@ -1,7 +1,7 @@
 from .internvl3_util import build_transform, dynamic_preprocess, find_closest_aspect_ratio, load_image
 from .loader import load_dataset, load_model
 from .metrics import calc_binary_classification_metrics, compute_classify_matrics, compute_seg_metrics
-from .qkvfp32_monkey_patch import (
+from .qwen25_util import (
     use_monkey_patch_qwen2_5vl_qkvfp32_eager_encoderselfattn,
     use_monkey_patch_qwen2_5vl_qkvfp32_eager_visionattn,
 )

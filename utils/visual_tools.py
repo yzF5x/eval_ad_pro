@@ -18,6 +18,26 @@ _STRUCTURE_3x3 = np.ones((3, 3), dtype=np.int32)
 _SPACY_PIPELINES: Dict[str, Any] = {}
 
 
+def _is_internvl_model(model_type: Optional[str], vision_token_id: Optional[int] = None) -> bool:
+    model_type_text = str(model_type or "").lower()
+    if "internvl" in model_type_text:
+        return True
+    return vision_token_id in {151671, 151667}
+
+
+def _resolve_grid_shape(
+    width: int,
+    height: int,
+    patch_size: int,
+    merge_size: int,
+    model_type: Optional[str] = None,
+    vision_token_id: Optional[int] = None,
+) -> Tuple[int, int]:
+    if _is_internvl_model(model_type, vision_token_id):
+        return 16, 16
+    return int(width / (patch_size * merge_size)), int(height / (patch_size * merge_size))
+
+
 def _get_spacy_pipeline(lang_model: str):
     nlp = _SPACY_PIPELINES.get(lang_model)
     if nlp is None:
@@ -829,6 +849,7 @@ def optimized_save_per_layer_head_attention(
     """
     sequences = kwargs.pop("sequences", None)
     vision_token_id = kwargs.pop("vision_token_id", 151655)
+    model_type = kwargs.pop("model_type", None)
 
     if sequences is None:
         sequences = output_ids.get("sequences", None)
@@ -843,8 +864,9 @@ def optimized_save_per_layer_head_attention(
 
     image = processed_image[-1]
     width, height = image.size
-    grid_width = int(width / (patch_size * merge_size))
-    grid_height = int(height / (patch_size * merge_size))
+    grid_width, grid_height = _resolve_grid_shape(
+        width, height, patch_size, merge_size, model_type=model_type, vision_token_id=vision_token_id
+    )
     num_patches = int(grid_width * grid_height)
 
     output_token_len = len(output_ids["attentions"]) - 1
@@ -947,12 +969,15 @@ def evaluate_saved_attention_fast(
     outlier_ratio = kwargs.pop("outlier_ratio", 50.0)
     dominance_ratio = kwargs.pop("dominance_ratio", 5.0)
     outlier_share_thr = kwargs.pop("outlier_share_thr", 0.3)
+    model_type = kwargs.pop("model_type", None)
     if return_aggreagate is not None:
         return_aggregate = bool(return_aggreagate)
 
     image = processed_image[-1]
     width, height = image.size
-    grid_width, grid_height = int(width / (patch_size * merge_size)), int(height / (patch_size * merge_size))
+    grid_width, grid_height = _resolve_grid_shape(
+        width, height, patch_size, merge_size, model_type=model_type, vision_token_id=vision_token_id
+    )
     num_patches = int(grid_width * grid_height)
     output_token_start = input_token_len
     output_token_end = output_token_start + output_token_len 
@@ -1240,6 +1265,7 @@ def evaluate_saved_attention_sink_first(
     outlier_ratio = kwargs.pop("outlier_ratio", 50.0)
     dominance_ratio = kwargs.pop("dominance_ratio", 5.0)
     outlier_share_thr = kwargs.pop("outlier_share_thr", 0.3)
+    model_type = kwargs.pop("model_type", None)
     if return_aggreagate is not None:
         return_aggregate = bool(return_aggreagate)
     topk_spike_patches = kwargs.pop("topk_spike_patches", kwargs.pop("sink_peak_topk", 3))
@@ -1248,7 +1274,9 @@ def evaluate_saved_attention_sink_first(
 
     image = processed_image[-1]
     width, height = image.size
-    grid_width, grid_height = int(width / (patch_size * merge_size)), int(height / (patch_size * merge_size))
+    grid_width, grid_height = _resolve_grid_shape(
+        width, height, patch_size, merge_size, model_type=model_type, vision_token_id=vision_token_id
+    )
     num_patches = int(grid_width * grid_height)
     output_token_start = input_token_len
     output_token_end = output_token_start + output_token_len
@@ -1467,7 +1495,7 @@ def evaluate_saved_attention_sink_first(
     )
 
     topk = min(10, final_token_weights.numel())
-    topk_=True)
+    topk_final_token_weights, topk_index = torch.topk(final_token_weights, topk, largest=True, sorted=True)
     topk_final_index = final_index[topk_index]
     topk_final_valid_attn = flatten_text2vision_attn[topk_final_index]
     topk_final_valid_summed = summed_all[topk_final_index]

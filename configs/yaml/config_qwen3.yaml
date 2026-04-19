@@ -1,12 +1,12 @@
 shared:
-  model_path: zai-org/GLM-4.1V-9B-Thinking
-  model_type: glm
+  model_path: Qwen/Qwen3-VL-8B-Thinking
+  model_type: qwen
   OPENROUTER_API_KEY: 
   with_tag: true
-  vision_token_id: 151343
-  patch_size: 14
+  vision_token_id: 151655
+  patch_size: 16
   merge_size: 2
-  layers_num: 40
+  layers_num: 36
   heads_num: 32
 
 generator:

@@ -91,6 +91,10 @@ def _normalize_attention_eval_mode(mode: str) -> str:
     return normalized
 
 
+def _build_eval_variant_tag(attention_eval_mode: str, topk_spike_patches: int) -> str:
+    return f"{attention_eval_mode}_topk_spike_patches_{topk_spike_patches}"
+
+
 def run_anomaly_metrics(args, result_json_path: str, result_dir: str, model_type: str):
     if not os.path.isfile(result_json_path):
         raise FileNotFoundError(f"Result json not found for anomaly metrics: {result_json_path}")
@@ -136,6 +140,8 @@ def main(args):
 
     model_name = build_model_name(args.model_path, args.with_tag)
     attention_eval_mode = _normalize_attention_eval_mode(getattr(args, "attention_eval_mode", "fast"))
+    topk_spike_patches = int(getattr(args, "topk_spike_patches", 3))
+    eval_variant_tag = _build_eval_variant_tag(attention_eval_mode, topk_spike_patches)
     evaluate_attention_fn = (
         evaluate_saved_attention_sink_first
         if attention_eval_mode == "sink_first"
@@ -143,12 +149,13 @@ def main(args):
     )
     save_dir = os.path.join(args.generated_dir, model_name)
     out_path = os.path.join(save_dir, "output_attentions")
-    out_img_path = os.path.join(save_dir, "images")
-    out_model_dir = os.path.join(save_dir, "results")
+    base_result_dir = os.path.join(save_dir, "results")
+    out_img_path = os.path.join(save_dir, "images", eval_variant_tag)
+    out_model_dir = os.path.join(base_result_dir, eval_variant_tag)
     os.makedirs(out_img_path, exist_ok=True)
     os.makedirs(out_model_dir, exist_ok=True)
 
-    result_json_path = os.path.join(out_model_dir, "result.json")
+    result_json_path = os.path.join(base_result_dir, "result.json")
     run_anomaly_metrics(args, result_json_path=result_json_path, result_dir=out_model_dir, model_type=model_type)
 
     if not os.path.isdir(out_path):
@@ -230,6 +237,7 @@ def main(args):
             output_token_len=output_token_len,
             processed_image=processed_image,
             processed_prompt=processed_text,
+            model_type=meta.get("model_type", model_type),
             save_name=save_name,
             pred_has_anomaly=pred_has_anomaly,
             save_fig=args.save_fig,
@@ -240,7 +248,7 @@ def main(args):
             layers_num=int(meta.get("layers_num", args.layers_num)),
             heads_num=int(meta.get("heads_num", args.heads_num)),
             vision_token_id=int(meta.get("vision_token_id", args.vision_token_id)),
-            topk_spike_patches=int(getattr(args, "topk_spike_patches", 3)),
+            topk_spike_patches=topk_spike_patches,
         )
 
         outlier_tokens_num += sample_outlier_tokens_num
@@ -292,6 +300,11 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--config", required=True)
     p.add_argument("--dataset", required=True, choices=sorted(DATASET_DEFAULTS.keys()))
+    p.add_argument("--topk_spike_patches", type=int, default=None)
     cli_args = p.parse_args()
-    main(build_stage_namespace(cli_args.config, stage="evaluator", dataset=cli_args.dataset))
-
+    stage_args = build_stage_namespace(cli_args.config, stage="evaluator", dataset=cli_args.dataset)
+    if cli_args.topk_spike_patches is not None:
+        if cli_args.topk_spike_patches <= 0:
+            raise ValueError(f"--topk_spike_patches must be > 0, got: {cli_args.topk_spike_patches}")
+        stage_args.topk_spike_patches = cli_args.topk_spike_patches
+    main(stage_args)
