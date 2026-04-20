@@ -1,18 +1,18 @@
 shared:
-  model_path: Qwen/Qwen2.5-VL-7B-Instruct
-  model_type: qwen
-  OPENROUTER_API_KEY: ""
-  with_tag: false
+  model_path: lmms-lab/LLaVA-OneVision-1.5-4B-Instruct
+  model_type: llava-ov
+  OPENROUTER_API_KEY: 
+  with_tag: true
   vision_token_id: 151655
   patch_size: 14
   merge_size: 2
-  layers_num: 28
-  heads_num: 28
+  layers_num: 36
+  heads_num: 32
 
 generator:
   max_new_tokens: 1024
   overwrite: false
-  disable_monkey_patch: false
+  disable_monkey_patch: true
   outlier_ratio: 50.0
   dominance_ratio: 5.0
   outlier_share_thr: 0.3
@@ -22,5 +22,5 @@ evaluator:
   normal_set_zero: false
   overwrite: false
   return_aggregate: true
-  attention_eval_mode: fast
+  attention_eval_mode: sink_first
   topk_spike_patches: 3

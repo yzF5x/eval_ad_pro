@@ -32,7 +32,17 @@ def _resolve_grid_shape(
     merge_size: int,
     model_type: Optional[str] = None,
     vision_token_id: Optional[int] = None,
+    grid_height: Optional[int] = None,
+    grid_width: Optional[int] = None,
 ) -> Tuple[int, int]:
+    if (grid_height is None) ^ (grid_width is None):
+        raise ValueError("grid_height and grid_width must be both provided or both omitted.")
+    if grid_height is not None and grid_width is not None:
+        gh = int(grid_height)
+        gw = int(grid_width)
+        if gh <= 0 or gw <= 0:
+            raise ValueError(f"Invalid grid shape: {gh}x{gw}")
+        return gw, gh
     if _is_internvl_model(model_type, vision_token_id):
         return 16, 16
     return int(width / (patch_size * merge_size)), int(height / (patch_size * merge_size))
@@ -850,6 +860,8 @@ def optimized_save_per_layer_head_attention(
     sequences = kwargs.pop("sequences", None)
     vision_token_id = kwargs.pop("vision_token_id", 151655)
     model_type = kwargs.pop("model_type", None)
+    grid_height = kwargs.pop("grid_height", None)
+    grid_width = kwargs.pop("grid_width", None)
 
     if sequences is None:
         sequences = output_ids.get("sequences", None)
@@ -865,7 +877,14 @@ def optimized_save_per_layer_head_attention(
     image = processed_image[-1]
     width, height = image.size
     grid_width, grid_height = _resolve_grid_shape(
-        width, height, patch_size, merge_size, model_type=model_type, vision_token_id=vision_token_id
+        width,
+        height,
+        patch_size,
+        merge_size,
+        model_type=model_type,
+        vision_token_id=vision_token_id,
+        grid_height=grid_height,
+        grid_width=grid_width,
     )
     num_patches = int(grid_width * grid_height)
 
@@ -935,7 +954,9 @@ def optimized_save_per_layer_head_attention(
         "heads_num": num_heads,
         "patch_size": patch_size,
         "merge_size": merge_size,
-        "vision_token_id": vision_token_id
+        "vision_token_id": vision_token_id,
+        "grid_height": grid_height,
+        "grid_width": grid_width,
     }
 
     return compressed_attn, meta
@@ -970,13 +991,22 @@ def evaluate_saved_attention_fast(
     dominance_ratio = kwargs.pop("dominance_ratio", 5.0)
     outlier_share_thr = kwargs.pop("outlier_share_thr", 0.3)
     model_type = kwargs.pop("model_type", None)
+    grid_height = kwargs.pop("grid_height", None)
+    grid_width = kwargs.pop("grid_width", None)
     if return_aggreagate is not None:
         return_aggregate = bool(return_aggreagate)
 
     image = processed_image[-1]
     width, height = image.size
     grid_width, grid_height = _resolve_grid_shape(
-        width, height, patch_size, merge_size, model_type=model_type, vision_token_id=vision_token_id
+        width,
+        height,
+        patch_size,
+        merge_size,
+        model_type=model_type,
+        vision_token_id=vision_token_id,
+        grid_height=grid_height,
+        grid_width=grid_width,
     )
     num_patches = int(grid_width * grid_height)
     output_token_start = input_token_len
@@ -1266,6 +1296,8 @@ def evaluate_saved_attention_sink_first(
     dominance_ratio = kwargs.pop("dominance_ratio", 5.0)
     outlier_share_thr = kwargs.pop("outlier_share_thr", 0.3)
     model_type = kwargs.pop("model_type", None)
+    grid_height = kwargs.pop("grid_height", None)
+    grid_width = kwargs.pop("grid_width", None)
     if return_aggreagate is not None:
         return_aggregate = bool(return_aggreagate)
     topk_spike_patches = kwargs.pop("topk_spike_patches", kwargs.pop("sink_peak_topk", 3))
@@ -1275,7 +1307,14 @@ def evaluate_saved_attention_sink_first(
     image = processed_image[-1]
     width, height = image.size
     grid_width, grid_height = _resolve_grid_shape(
-        width, height, patch_size, merge_size, model_type=model_type, vision_token_id=vision_token_id
+        width,
+        height,
+        patch_size,
+        merge_size,
+        model_type=model_type,
+        vision_token_id=vision_token_id,
+        grid_height=grid_height,
+        grid_width=grid_width,
     )
     num_patches = int(grid_width * grid_height)
     output_token_start = input_token_len

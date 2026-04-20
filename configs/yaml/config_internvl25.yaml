@@ -2,7 +2,7 @@ shared:
   model_path: OpenGVLab/InternVL3_5-4B-HF
   model_type: internvl
   OPENROUTER_API_KEY: ""
-  with_tag: false
+  with_tag: true
   vision_token_id: 151671
   patch_size: 14
   merge_size: 2

@@ -4,6 +4,8 @@ import inspect
 from .base import BaseModelHandler
 from .glm import GlmHandler
 from .internvl import InternVLHandler
+from .llava_next import LlavaNextHandler
+from .llava_ov import LlavaOvHandler
 from .qwen import QwenHandler
 
 
@@ -12,13 +14,24 @@ class HandlerFactory:
         "qwen": QwenHandler,
         "internvl": InternVLHandler,
         "glm": GlmHandler,
+        "llava-next": LlavaNextHandler,
+        "llava-ov": LlavaOvHandler,
     }
 
     @classmethod
     def infer_model_type(cls, model_path: str, model_type: str = "auto") -> str:
-        if model_type and model_type.lower() != "auto":
-            return model_type.lower()
+        normalized = str(model_type or "auto").strip().lower().replace("_", "-")
+        if normalized in {"llava-ov", "llavaov", "llava-onevision", "onevision"}:
+            return "llava-ov"
+        if normalized in {"llava", "llava-next", "llavanext"}:
+            return "llava-next"
+        if normalized and normalized != "auto":
+            return normalized
         lower = model_path.lower()
+        if any(k in lower for k in ("llava-ov", "llava_ov", "llavaov", "llava-onevision", "onevision")):
+            return "llava-ov"
+        if any(k in lower for k in ("llava-next", "llava_next", "llavanext", "llava")):
+            return "llava-next"
         if "intern" in lower:
             return "internvl"
         if "glm" in lower:
@@ -41,4 +54,3 @@ class HandlerFactory:
             allowed = {name for name in sig.parameters if name not in {"self", "model_path"}}
             filtered_kwargs = {k: v for k, v in kwargs.items() if k in allowed}
         return handler_cls(model_path=model_path, **filtered_kwargs)
-

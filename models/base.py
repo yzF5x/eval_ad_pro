@@ -153,6 +153,8 @@ class BaseModelHandler(ABC):
         **kwargs,
     ) -> Tuple[Any, Dict[str, Any]]:
         cfg = self._resolve_attention_params(**kwargs)
+        grid_height = cfg.get("grid_height")
+        grid_width = cfg.get("grid_width")
         return optimized_save_per_layer_head_attention(
             tokenizer=self.tokenizer,
             output_ids=generated,
@@ -163,10 +165,12 @@ class BaseModelHandler(ABC):
             merge_size=int(cfg["merge_size"]),
             sequences=generated.get("sequences", None),
             vision_token_id=int(cfg["vision_token_id"]),
+            model_type=cfg.get("model_type"),
+            grid_height=(None if grid_height is None else int(grid_height)),
+            grid_width=(None if grid_width is None else int(grid_width)),
         )
 
 
     @property
     def model_name(self) -> str:
         return os.path.basename(self.model_path.rstrip("/\\"))
-

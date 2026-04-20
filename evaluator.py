@@ -248,6 +248,8 @@ def main(args):
             layers_num=int(meta.get("layers_num", args.layers_num)),
             heads_num=int(meta.get("heads_num", args.heads_num)),
             vision_token_id=int(meta.get("vision_token_id", args.vision_token_id)),
+            grid_height=meta.get("grid_height"),
+            grid_width=meta.get("grid_width"),
             topk_spike_patches=topk_spike_patches,
         )
 

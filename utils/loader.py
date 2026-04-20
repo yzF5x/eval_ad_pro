@@ -54,6 +54,14 @@ def load_model(
             from transformers import InternVLForConditionalGeneration
 
             model_cls = InternVLForConditionalGeneration
+        elif any(k in lower_path for k in ("llava-ov", "llava_ov", "llavaov", "llava-onevision", "onevision")):
+            from transformers import LlavaOnevisionForConditionalGeneration
+
+            model_cls = LlavaOnevisionForConditionalGeneration
+        elif any(k in lower_path for k in ("llava-next", "llava_next", "llavanext", "llava")):
+            from transformers import LlavaNextForConditionalGeneration
+
+            model_cls = LlavaNextForConditionalGeneration
         elif "glm" in lower_path:
             from transformers import Glm4vForConditionalGeneration
 

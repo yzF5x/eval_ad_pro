@@ -19,13 +19,20 @@ def move_to_cpu(obj):
 
 
 def get_resize_info(model_path):
-    if 'qwen3' in model_path.lower():
+    lower = model_path.lower()
+    if 'qwen3' in lower:
         merged_patch_size = 32
         max_size = 416
-    elif 'qwen2' in model_path.lower():
+    elif 'qwen2' in lower:
         merged_patch_size = 28
         max_size = 420
-    elif 'glm' in model_path.lower():
+    elif 'glm' in lower:
+        merged_patch_size = 28
+        max_size = 420
+    elif any(k in lower for k in ('llava-next', 'llava_next', 'llavanext')):
+        merged_patch_size = 14
+        max_size = 448
+    elif any(k in lower for k in ('llava-ov', 'llava_ov', 'llavaov', 'llava-onevision', 'onevision')):
         merged_patch_size = 28
         max_size = 420
     else:
@@ -119,4 +126,3 @@ def toliststr(s):
     elif isinstance(s, list):
         return [str(x) for x in s]
     raise NotImplementedError
-
