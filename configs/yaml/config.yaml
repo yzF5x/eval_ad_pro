@@ -23,5 +23,5 @@ evaluator:
   overwrite: false
   return_aggregate: true
   attention_eval_mode: fast
-  sink_first_token_mode: token_mean
+  token_aggregation_mode: token_mean
   topk_spike_patches: 3

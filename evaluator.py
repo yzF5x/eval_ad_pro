@@ -140,7 +140,7 @@ def main(args):
 
     model_name = build_model_name(args.model_path, args.with_tag)
     attention_eval_mode = _normalize_attention_eval_mode(getattr(args, "attention_eval_mode", "fast"))
-    sink_first_token_mode = str(getattr(args, "sink_first_token_mode", "token_mean"))
+    token_aggregation_mode = str(getattr(args, "token_aggregation_mode", getattr(args, "sink_first_token_mode", "token_mean")))
     topk_spike_patches = int(getattr(args, "topk_spike_patches", 3))
     eval_variant_tag = _build_eval_variant_tag(attention_eval_mode, topk_spike_patches)
     evaluate_attention_fn = (
@@ -252,7 +252,7 @@ def main(args):
             grid_height=meta.get("grid_height"),
             grid_width=meta.get("grid_width"),
             topk_spike_patches=topk_spike_patches,
-            token_aggregation_mode=sink_first_token_mode,
+            token_aggregation_mode=token_aggregation_mode,
         )
 
         outlier_tokens_num += sample_outlier_tokens_num

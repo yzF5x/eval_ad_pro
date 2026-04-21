@@ -103,14 +103,16 @@ def _normalize_attention_eval_options(evaluator: Dict[str, Any]) -> None:
         "se_min": "se_rank",
         "token_se_min": "se_rank",
     }
-    raw_token_mode = evaluator.get("sink_first_token_mode", "token_mean")
+    raw_token_mode = evaluator.get("token_aggregation_mode", evaluator.get("sink_first_token_mode", "token_mean"))
     normalized_token_mode = token_mode_aliases.get(str(raw_token_mode).strip().lower())
     if normalized_token_mode is None:
         raise ValueError(
-            f"Unsupported evaluator.sink_first_token_mode: {raw_token_mode}. "
+            f"Unsupported evaluator.token_aggregation_mode: {raw_token_mode}. "
             "Use 'token_mean' or 'se_rank'."
         )
-    evaluator["sink_first_token_mode"] = normalized_token_mode
+    evaluator["token_aggregation_mode"] = normalized_token_mode
+    if "sink_first_token_mode" in evaluator:
+        evaluator["sink_first_token_mode"] = normalized_token_mode
 
 
 def _normalize_openrouter_api_key(shared: Dict[str, Any]) -> None:
