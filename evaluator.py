@@ -109,7 +109,13 @@ def _normalize_token_aggregation_mode(mode: str) -> str:
     return normalized
 
 
-def _build_eval_variant_tag(attention_eval_mode: str, topk_spike_patches: int) -> str:
+def _build_eval_variant_tag(
+    attention_eval_mode: str,
+    topk_spike_patches: int,
+    token_aggregation_mode: str = "token_mean",
+) -> str:
+    if attention_eval_mode == "sink_first":
+        return f"{attention_eval_mode}_{token_aggregation_mode}_topk_spike_patches_{topk_spike_patches}"
     return f"{attention_eval_mode}_topk_spike_patches_{topk_spike_patches}"
 
 
@@ -162,7 +168,11 @@ def main(args):
         getattr(args, "token_aggregation_mode", getattr(args, "sink_first_token_mode", "token_mean"))
     )
     topk_spike_patches = int(getattr(args, "topk_spike_patches", 3))
-    eval_variant_tag = _build_eval_variant_tag(attention_eval_mode, topk_spike_patches)
+    eval_variant_tag = _build_eval_variant_tag(
+        attention_eval_mode,
+        topk_spike_patches,
+        token_aggregation_mode=token_aggregation_mode,
+    )
     evaluate_attention_fn = (
         evaluate_saved_attention_sink_first_token_aggregate
         if attention_eval_mode == "sink_first"
@@ -307,7 +317,11 @@ def main(args):
     seg_metrics_median = compute_seg_metrics(pixel_dct_median)
     seg_metrics_median_zero = compute_seg_metrics(pixel_dct_median_zero)
 
-    score_tag = "sink_first" if attention_eval_mode == "sink_first" else "fast"
+    score_tag = (
+        f"sink_first_{token_aggregation_mode}"
+        if attention_eval_mode == "sink_first"
+        else "fast"
+    )
     if args.return_aggregate:
         seg_metrics_median.to_excel(os.path.join(out_model_dir, f"seg_score_aggreated_{score_tag}.xlsx"), index=False, float_format="%.3f")
         seg_metrics_median_zero.to_excel(os.path.join(out_model_dir, f"seg_score_aggreated_zero_{score_tag}.xlsx"), index=False, float_format="%.3f")
