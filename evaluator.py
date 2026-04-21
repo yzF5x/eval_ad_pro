@@ -91,6 +91,24 @@ def _normalize_attention_eval_mode(mode: str) -> str:
     return normalized
 
 
+def _normalize_token_aggregation_mode(mode: str) -> str:
+    aliases = {
+        "token_mean": "token_mean",
+        "mean": "token_mean",
+        "se_rank": "se_rank",
+        "token_se_rank": "se_rank",
+        "se_min": "se_rank",
+        "token_se_min": "se_rank",
+        "se-rank": "se_rank",
+    }
+    normalized = aliases.get(str(mode).strip().lower())
+    if normalized is None:
+        raise ValueError(
+            f"Unsupported token_aggregation_mode: {mode}. Use 'token_mean' or 'se_rank'."
+        )
+    return normalized
+
+
 def _build_eval_variant_tag(attention_eval_mode: str, topk_spike_patches: int) -> str:
     return f"{attention_eval_mode}_topk_spike_patches_{topk_spike_patches}"
 
@@ -140,7 +158,9 @@ def main(args):
 
     model_name = build_model_name(args.model_path, args.with_tag)
     attention_eval_mode = _normalize_attention_eval_mode(getattr(args, "attention_eval_mode", "fast"))
-    token_aggregation_mode = str(getattr(args, "token_aggregation_mode", getattr(args, "sink_first_token_mode", "token_mean")))
+    token_aggregation_mode = _normalize_token_aggregation_mode(
+        getattr(args, "token_aggregation_mode", getattr(args, "sink_first_token_mode", "token_mean"))
+    )
     topk_spike_patches = int(getattr(args, "topk_spike_patches", 3))
     eval_variant_tag = _build_eval_variant_tag(attention_eval_mode, topk_spike_patches)
     evaluate_attention_fn = (
@@ -305,10 +325,13 @@ if __name__ == "__main__":
     p.add_argument("--config", required=True)
     p.add_argument("--dataset", required=True, choices=sorted(DATASET_DEFAULTS.keys()))
     p.add_argument("--topk_spike_patches", type=int, default=None)
+    p.add_argument("--token_aggregation_mode", type=str, default=None)
     cli_args = p.parse_args()
     stage_args = build_stage_namespace(cli_args.config, stage="evaluator", dataset=cli_args.dataset)
     if cli_args.topk_spike_patches is not None:
         if cli_args.topk_spike_patches <= 0:
             raise ValueError(f"--topk_spike_patches must be > 0, got: {cli_args.topk_spike_patches}")
         stage_args.topk_spike_patches = cli_args.topk_spike_patches
+    if cli_args.token_aggregation_mode is not None:
+        stage_args.token_aggregation_mode = _normalize_token_aggregation_mode(cli_args.token_aggregation_mode)
     main(stage_args)
