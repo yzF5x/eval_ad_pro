@@ -69,15 +69,8 @@ def _apply_dataset_defaults(dataset: str, generator: Dict[str, Any], evaluator: 
 
 
 def _normalize_return_aggregate(evaluator: Dict[str, Any]) -> None:
-    has_new = "return_aggregate" in evaluator
-    has_old = "return_aggreagate" in evaluator
-    if not has_new and not has_old:
-        raise KeyError(
-            "Missing required key in section 'evaluator': one of ['return_aggregate', 'return_aggreagate']"
-        )
-    value = evaluator["return_aggregate"] if has_new else evaluator["return_aggreagate"]
-    evaluator["return_aggregate"] = value
-    evaluator.setdefault("return_aggreagate", value)
+    if "return_aggregate" not in evaluator:
+        raise KeyError("Missing required key in section 'evaluator': ['return_aggregate']")
 
 
 def _normalize_attention_eval_options(evaluator: Dict[str, Any]) -> None:
@@ -101,6 +94,23 @@ def _normalize_attention_eval_options(evaluator: Dict[str, Any]) -> None:
     if topk <= 0:
         raise ValueError(f"evaluator.topk_spike_patches must be > 0, got: {topk}")
     evaluator["topk_spike_patches"] = topk
+
+    token_mode_aliases = {
+        "token_mean": "token_mean",
+        "mean": "token_mean",
+        "se_rank": "se_rank",
+        "token_se_rank": "se_rank",
+        "se_min": "se_rank",
+        "token_se_min": "se_rank",
+    }
+    raw_token_mode = evaluator.get("sink_first_token_mode", "token_mean")
+    normalized_token_mode = token_mode_aliases.get(str(raw_token_mode).strip().lower())
+    if normalized_token_mode is None:
+        raise ValueError(
+            f"Unsupported evaluator.sink_first_token_mode: {raw_token_mode}. "
+            "Use 'token_mean' or 'se_rank'."
+        )
+    evaluator["sink_first_token_mode"] = normalized_token_mode
 
 
 def _normalize_openrouter_api_key(shared: Dict[str, Any]) -> None:

@@ -9,6 +9,8 @@ from .util import build_model_name, get_resize_info, move_to_cpu, resize_image, 
 from .visual_tools import (
     evaluate_saved_attention_fast,
     evaluate_saved_attention_sink_first,
+    evaluate_saved_attention_sink_first_token_aggregate,
+    evaluate_saved_attention_sink_first_token_mean,
     get_attention_from_saved_per_layer_head_fast,
     get_saved_per_layer_head_attention,
     optimized_get_attention_from_saved_per_layer_head_fast_sink_first,
@@ -40,8 +42,9 @@ __all__ = [
     "use_monkey_patch_qwen2_5vl_qkvfp32_eager_visionattn",
     "evaluate_saved_attention_fast",
     "evaluate_saved_attention_sink_first",
+    "evaluate_saved_attention_sink_first_token_aggregate",
+    "evaluate_saved_attention_sink_first_token_mean",
     "get_attention_from_saved_per_layer_head_fast",
     "optimized_get_attention_from_saved_per_layer_head_fast",
     "optimized_get_attention_from_saved_per_layer_head_fast_sink_first",
 ]
-
