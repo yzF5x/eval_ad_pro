@@ -1984,20 +1984,10 @@ def evaluate_saved_attention_sink_first_token_mean(
     par_info_all = get_par_from_attention_fast(token_text2vision_attn, 0.17, grid_height, grid_width)
     valid_par_index_all = par_info_all <= 0.5
 
-    se_info_all = torch.full((output_token_len,), float("inf"), device=device, dtype=torch.float32)
-    se_list_all = [
-        {"spatial_entropy": float("inf"), "labeled_array": None, "num_components": 0, "valid": False, "skipped": True}
-        for _ in range(output_token_len)
-    ]
+    se_info_all, _, _, _ = get_spatial_entropy_from_attention_fast(
+        token_text2vision_attn, grid_height=grid_height, grid_width=grid_width
+    )
     candidate_se_compute = valid_filtered_token & valid_par_index_all
-    cand_idx = candidate_se_compute.nonzero(as_tuple=True)[0]
-    if cand_idx.numel() > 0:
-        se_sub, se_list_sub, _, _ = get_spatial_entropy_from_attention_fast(
-            token_text2vision_attn[cand_idx], grid_height=grid_height, grid_width=grid_width
-        )
-        se_info_all[cand_idx] = se_sub
-        for local_i, global_i in enumerate(cand_idx.tolist()):
-            se_list_all[global_i] = {**se_list_sub[local_i], "valid": True, "skipped": False}
 
     valid_se_isfinite = torch.isfinite(se_info_all)
     se_info_valid_indices = valid_sum_index_all & valid_filtered_token & valid_par_index_all & valid_se_isfinite
@@ -2113,8 +2103,11 @@ def _evaluate_saved_attention_sink_first_token_se_rank(
     grid_height = kwargs.pop("grid_height", None)
     grid_width = kwargs.pop("grid_width", None)
     topk_spike_patches = kwargs.pop("topk_spike_patches", 1)
+    se_rank_topk_heads = int(kwargs.pop("se_rank_topk_heads", kwargs.pop("token_se_rank_topk_heads", 1)))
     sink_peak_min_votes = kwargs.pop("sink_peak_min_votes", 1)
     sink_peak_vote_ratio = kwargs.pop("sink_peak_vote_ratio", 0.0)
+    if se_rank_topk_heads <= 0:
+        raise ValueError(f"se_rank_topk_heads must be > 0, got: {se_rank_topk_heads}")
 
     image = processed_image[-1]
     width, height = image.size
@@ -2290,14 +2283,29 @@ def _evaluate_saved_attention_sink_first_token_se_rank(
             token_candidates = ((row_token_idx == token_idx) & candidate_rows & valid_se_isfinite).nonzero(as_tuple=True)[0]
         if token_candidates.numel() == 0:
             continue
-        best_local = torch.argmin(se_info_all[token_candidates])
+        token_topk = min(int(se_rank_topk_heads), int(token_candidates.numel()))
+        best_local = torch.topk(
+            se_info_all[token_candidates],
+            k=token_topk,
+            largest=False,
+            sorted=False,
+        ).indices
         selected_rows[token_candidates[best_local]] = True
 
     if not selected_rows.any():
         result = _row_fallback_map(candidate_rows)
         return result, 1.0, outlier_tokens_num, all_tokens_num
 
-    token_represent_mask = torch.zeros(output_token_len, dtype=torch.bool, device=device)
+    vision_3d = _reshape_flatten_attention_by_token(flatten_text2vision_attn, int(output_token_len))
+    text_3d = _reshape_flatten_attention_by_token(flatten_text2text_attn, int(output_token_len))
+    selected_2d = _reshape_flatten_attention_by_token(
+        selected_rows.to(flatten_text2vision_attn.dtype).unsqueeze(1), int(output_token_len)
+    ).squeeze(-1) > 0
+
+    select_weights = selected_2d.to(flatten_text2vision_attn.dtype)
+    selected_counts = select_weights.sum(dim=0)
+    token_represent_mask = selected_counts > 0
+
     token_text2vision_attn = torch.zeros(
         (output_token_len, flatten_text2vision_attn.shape[1]),
         dtype=flatten_text2vision_attn.dtype,
@@ -2312,14 +2320,23 @@ def _evaluate_saved_attention_sink_first_token_se_rank(
     token_par_all = torch.full((output_token_len,), float("inf"), dtype=torch.float32, device=device)
     token_se_all = torch.full((output_token_len,), float("inf"), dtype=torch.float32, device=device)
 
-    selected_rows_idx = selected_rows.nonzero(as_tuple=True)[0]
-    token_indices = selected_rows_idx % int(output_token_len)
-    token_represent_mask[token_indices] = True
-    token_text2vision_attn[token_indices] = flatten_text2vision_attn[selected_rows_idx]
-    token_text2text_attn[token_indices] = flatten_text2text_attn[selected_rows_idx]
-    token_summed_all[token_indices] = summed_all[selected_rows_idx]
-    token_par_all[token_indices] = par_info_all[selected_rows_idx]
-    token_se_all[token_indices] = se_info_all[selected_rows_idx]
+    denom = selected_counts.clamp(min=1).unsqueeze(-1)
+    token_text2vision_mean = (vision_3d * select_weights.unsqueeze(-1)).sum(dim=0) / denom
+    token_text2text_mean = (text_3d * select_weights.unsqueeze(-1)).sum(dim=0) / denom
+
+    summed_2d = _reshape_flatten_attention_by_token(summed_all.unsqueeze(1), int(output_token_len)).squeeze(-1)
+    par_2d = _reshape_flatten_attention_by_token(par_info_all.unsqueeze(1), int(output_token_len)).squeeze(-1)
+    se_2d = _reshape_flatten_attention_by_token(se_info_all.unsqueeze(1), int(output_token_len)).squeeze(-1)
+
+    token_summed_mean = (summed_2d * select_weights.to(summed_2d.dtype)).sum(dim=0) / selected_counts.clamp(min=1)
+    token_par_mean = (par_2d * select_weights.to(par_2d.dtype)).sum(dim=0) / selected_counts.clamp(min=1)
+    token_se_mean = (se_2d * select_weights.to(se_2d.dtype)).sum(dim=0) / selected_counts.clamp(min=1)
+
+    token_text2vision_attn[token_represent_mask] = token_text2vision_mean[token_represent_mask]
+    token_text2text_attn[token_represent_mask] = token_text2text_mean[token_represent_mask]
+    token_summed_all[token_represent_mask] = token_summed_mean[token_represent_mask]
+    token_par_all[token_represent_mask] = token_par_mean[token_represent_mask]
+    token_se_all[token_represent_mask] = token_se_mean[token_represent_mask]
 
     if not token_represent_mask.any():
         result = _row_fallback_map(candidate_rows)

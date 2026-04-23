@@ -24,4 +24,5 @@ evaluator:
   return_aggregate: true
   attention_eval_mode: fast
   token_aggregation_mode: token_mean
+  se_rank_topk_heads: 1
   topk_spike_patches: 3

@@ -95,6 +95,17 @@ def _normalize_attention_eval_options(evaluator: Dict[str, Any]) -> None:
         raise ValueError(f"evaluator.topk_spike_patches must be > 0, got: {topk}")
     evaluator["topk_spike_patches"] = topk
 
+    raw_se_rank_topk = evaluator.get("se_rank_topk_heads", evaluator.get("token_se_rank_topk_heads", 1))
+    try:
+        se_rank_topk_heads = int(raw_se_rank_topk)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"evaluator.se_rank_topk_heads must be an integer, got: {raw_se_rank_topk}") from exc
+    if se_rank_topk_heads <= 0:
+        raise ValueError(f"evaluator.se_rank_topk_heads must be > 0, got: {se_rank_topk_heads}")
+    evaluator["se_rank_topk_heads"] = se_rank_topk_heads
+    if "token_se_rank_topk_heads" in evaluator:
+        evaluator["token_se_rank_topk_heads"] = se_rank_topk_heads
+
     token_mode_aliases = {
         "token_mean": "token_mean",
         "mean": "token_mean",

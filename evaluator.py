@@ -109,12 +109,29 @@ def _normalize_token_aggregation_mode(mode: str) -> str:
     return normalized
 
 
+def _normalize_se_rank_topk_heads(value) -> int:
+    try:
+        topk = int(value)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"se_rank_topk_heads must be an integer, got: {value}") from exc
+    if topk <= 0:
+        raise ValueError(f"se_rank_topk_heads must be > 0, got: {topk}")
+    return topk
+
+
 def _build_eval_variant_tag(
     attention_eval_mode: str,
     topk_spike_patches: int,
     token_aggregation_mode: str = "token_mean",
+    se_rank_topk_heads: int = 1,
 ) -> str:
     if attention_eval_mode == "sink_first":
+        if token_aggregation_mode == "se_rank":
+            return (
+                f"{attention_eval_mode}_{token_aggregation_mode}"
+                f"_se_rank_topk_heads_{se_rank_topk_heads}"
+                f"_topk_spike_patches_{topk_spike_patches}"
+            )
         return f"{attention_eval_mode}_{token_aggregation_mode}_topk_spike_patches_{topk_spike_patches}"
     return f"{attention_eval_mode}_topk_spike_patches_{topk_spike_patches}"
 
@@ -168,10 +185,14 @@ def main(args):
         getattr(args, "token_aggregation_mode", getattr(args, "sink_first_token_mode", "token_mean"))
     )
     topk_spike_patches = int(getattr(args, "topk_spike_patches", 3))
+    se_rank_topk_heads = _normalize_se_rank_topk_heads(
+        getattr(args, "se_rank_topk_heads", getattr(args, "token_se_rank_topk_heads", 1))
+    )
     eval_variant_tag = _build_eval_variant_tag(
         attention_eval_mode,
         topk_spike_patches,
         token_aggregation_mode=token_aggregation_mode,
+        se_rank_topk_heads=se_rank_topk_heads,
     )
     evaluate_attention_fn = (
         evaluate_saved_attention_sink_first_token_aggregate
@@ -282,6 +303,7 @@ def main(args):
             grid_height=meta.get("grid_height"),
             grid_width=meta.get("grid_width"),
             topk_spike_patches=topk_spike_patches,
+            se_rank_topk_heads=se_rank_topk_heads,
             token_aggregation_mode=token_aggregation_mode,
         )
 
@@ -317,11 +339,13 @@ def main(args):
     seg_metrics_median = compute_seg_metrics(pixel_dct_median)
     seg_metrics_median_zero = compute_seg_metrics(pixel_dct_median_zero)
 
-    score_tag = (
-        f"sink_first_{token_aggregation_mode}"
-        if attention_eval_mode == "sink_first"
-        else "fast"
-    )
+    if attention_eval_mode == "sink_first":
+        if token_aggregation_mode == "se_rank":
+            score_tag = f"sink_first_{token_aggregation_mode}_topk_heads_{se_rank_topk_heads}"
+        else:
+            score_tag = f"sink_first_{token_aggregation_mode}"
+    else:
+        score_tag = "fast"
     if args.return_aggregate:
         seg_metrics_median.to_excel(os.path.join(out_model_dir, f"seg_score_aggreated_{score_tag}.xlsx"), index=False, float_format="%.3f")
         seg_metrics_median_zero.to_excel(os.path.join(out_model_dir, f"seg_score_aggreated_zero_{score_tag}.xlsx"), index=False, float_format="%.3f")
@@ -340,6 +364,7 @@ if __name__ == "__main__":
     p.add_argument("--dataset", required=True, choices=sorted(DATASET_DEFAULTS.keys()))
     p.add_argument("--topk_spike_patches", type=int, default=None)
     p.add_argument("--token_aggregation_mode", type=str, default=None)
+    p.add_argument("--se_rank_topk_heads", type=int, default=None)
     cli_args = p.parse_args()
     stage_args = build_stage_namespace(cli_args.config, stage="evaluator", dataset=cli_args.dataset)
     if cli_args.topk_spike_patches is not None:
@@ -348,4 +373,6 @@ if __name__ == "__main__":
         stage_args.topk_spike_patches = cli_args.topk_spike_patches
     if cli_args.token_aggregation_mode is not None:
         stage_args.token_aggregation_mode = _normalize_token_aggregation_mode(cli_args.token_aggregation_mode)
+    if cli_args.se_rank_topk_heads is not None:
+        stage_args.se_rank_topk_heads = _normalize_se_rank_topk_heads(cli_args.se_rank_topk_heads)
     main(stage_args)

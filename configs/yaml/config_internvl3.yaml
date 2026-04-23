@@ -23,4 +23,5 @@ evaluator:
   overwrite: false
   return_aggregate: true
   attention_eval_mode: sink_first
+  se_rank_topk_heads: 1
   topk_spike_patches: 3
