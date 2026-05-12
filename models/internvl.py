@@ -13,22 +13,12 @@ class InternVLHandler(BaseModelHandler):
             return {
                 "patch_size": 14,
                 "merge_size": 2,
-                "layers_num": 36,
-                "heads_num": 32,
                 "vision_token_id": 151671,
-                "outlier_ratio": 50.0,
-                "dominance_ratio": 5.0,
-                "outlier_share_thr": 0.3,
             }
         return {
             "patch_size": 14,
             "merge_size": 2,
-            "layers_num": 28,
-            "heads_num": 28,
             "vision_token_id": 151667,
-            "outlier_ratio": 50.0,
-            "dominance_ratio": 5.0,
-            "outlier_share_thr": 0.3,
         }
 
     def preprocess(self, img_path: str, question: str, use_structured_prompt: bool = False) -> dict:
@@ -52,4 +42,3 @@ class InternVLHandler(BaseModelHandler):
         if end > flat_ids.numel():
             raise ValueError("InternVL fixed vision span exceeds prompt token length.")
         return start, end
-

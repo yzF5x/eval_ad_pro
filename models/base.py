@@ -5,23 +5,7 @@ from typing import Any, Dict, Tuple
 import torch
 
 from utils.loader import load_model
-from utils.visual_tools import (
-    aggregate_cross_attentions,
-    compute_spatial_consistency_fast,
-    custom_weighted_sum,
-    detect_attn_spike_by_share,
-    detect_single_extreme_values_in_vlm_attn,
-    elbow_chord,
-    get_par_from_attention_fast,
-    get_spatial_entropy_from_attention_fast,
-    get_threshold_and_weight_from_sum,
-    get_token_indices_by_pos_and_words,
-    get_weight_with_indices,
-    heatmap_visual,
-    normalize_heatmap,
-    optimized_save_per_layer_head_attention,
-    visual_attn_token2image,
-)
+from utils.visual_tools import optimized_save_per_layer_head_attention
 
 
 class BaseModelHandler(ABC):
@@ -59,12 +43,7 @@ class BaseModelHandler(ABC):
         return {
             "patch_size": 14,
             "merge_size": 2,
-            "layers_num": 28,
-            "heads_num": 28,
             "vision_token_id": 151655,
-            "outlier_ratio": 50.0,
-            "dominance_ratio": 5.0,
-            "outlier_share_thr": 0.3,
         }
 
     def _resolve_attention_params(self, **kwargs) -> Dict[str, Any]:
@@ -149,18 +128,15 @@ class BaseModelHandler(ABC):
         generated: Dict[str, Any],
         input_len: int,
         processed_image: Any,
-        prompt: str,
         **kwargs,
     ) -> Tuple[Any, Dict[str, Any]]:
         cfg = self._resolve_attention_params(**kwargs)
         grid_height = cfg.get("grid_height")
         grid_width = cfg.get("grid_width")
         return optimized_save_per_layer_head_attention(
-            tokenizer=self.tokenizer,
             output_ids=generated,
             input_token_len=input_len,
             processed_image=processed_image,
-            processed_prompt=prompt,
             patch_size=int(cfg["patch_size"]),
             merge_size=int(cfg["merge_size"]),
             sequences=generated.get("sequences", None),

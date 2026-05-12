@@ -11,12 +11,7 @@ class GlmHandler(BaseModelHandler):
         return {
             "patch_size": 14,
             "merge_size": 2,
-            "layers_num": 40,
-            "heads_num": 32,
             "vision_token_id": 151343,
-            "outlier_ratio": 50.0,
-            "dominance_ratio": 5.0,
-            "outlier_share_thr": 0.3,
         }
 
     def _load_components(self):
@@ -31,4 +26,3 @@ class GlmHandler(BaseModelHandler):
         processed_image = resize_image([image], self.max_size, self.merged_patch_size)
         inputs = self.processor(text=prompt, images=processed_image, return_tensors="pt")
         return {"inputs": inputs, "prompt_text": prompt, "processed_image": processed_image}
-

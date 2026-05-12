@@ -18,20 +18,13 @@ class LlavaOvHandler(BaseModelHandler):
         return {
             "patch_size": 14,
             "merge_size": 2,
-            "layers_num": 36,
-            "heads_num": 32,
             "vision_token_id": 151655,
-            "outlier_ratio": 50.0,
-            "dominance_ratio": 5.0,
-            "outlier_share_thr": 0.3,
         }
 
     def _resolve_attention_params(self, **kwargs):
         cfg = super()._resolve_attention_params(**kwargs)
         cfg["patch_size"] = 14
         cfg["merge_size"] = 2
-        cfg["layers_num"] = 36
-        cfg["heads_num"] = 32
         cfg["vision_token_id"] = 151655
         return cfg
 

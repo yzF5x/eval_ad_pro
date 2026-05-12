@@ -44,14 +44,9 @@ class LlavaNextHandler(BaseModelHandler):
         return {
             "patch_size": self.patch_size,
             "merge_size": 1,
-            "layers_num": 32,
-            "heads_num": 32,
             "vision_token_id": 128256,
             "grid_height": grid_height,
             "grid_width": grid_width,
-            "outlier_ratio": 50.0,
-            "dominance_ratio": 5.0,
-            "outlier_share_thr": 0.3,
         }
 
     def _resolve_attention_params(self, **kwargs):
@@ -59,8 +54,6 @@ class LlavaNextHandler(BaseModelHandler):
         grid_height, grid_width = self._get_aggregation_grid()
         cfg["patch_size"] = self.patch_size
         cfg["merge_size"] = 1
-        cfg["layers_num"] = 32
-        cfg["heads_num"] = 32
         cfg["vision_token_id"] = 128256
         cfg["grid_height"] = grid_height
         cfg["grid_width"] = grid_width

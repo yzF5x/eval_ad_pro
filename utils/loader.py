@@ -33,10 +33,10 @@ def load_model(
         attn_implementation = "eager"
 
     tokenizer = AutoTokenizer.from_pretrained(
-        model_path, trust_remote_code=trust_remote_code, use_fast=use_fast
+        model_path, trust_remote_code=trust_remote_code,local_files_only=True
     )
     processor = AutoProcessor.from_pretrained(
-        model_path, trust_remote_code=trust_remote_code, use_fast=use_fast
+        model_path, trust_remote_code=trust_remote_code,local_files_only=True
     )
     model = None
     if load_model_weights:
@@ -55,9 +55,9 @@ def load_model(
 
             model_cls = InternVLForConditionalGeneration
         elif any(k in lower_path for k in ("llava-ov", "llava_ov", "llavaov", "llava-onevision", "onevision")):
-            from transformers import LlavaOnevisionForConditionalGeneration
+            from transformers import AutoModelForCausalLM
 
-            model_cls = LlavaOnevisionForConditionalGeneration
+            model_cls = AutoModelForCausalLM
         elif any(k in lower_path for k in ("llava-next", "llava_next", "llavanext", "llava")):
             from transformers import LlavaNextForConditionalGeneration
 
@@ -73,6 +73,7 @@ def load_model(
             device_map=device,
             attn_implementation=attn_implementation,
             trust_remote_code=trust_remote_code,
+            local_files_only=True,
             **kwargs,
         )
         model.eval()

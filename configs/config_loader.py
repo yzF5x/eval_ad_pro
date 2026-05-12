@@ -19,21 +19,17 @@ _SHARED_REQUIRED_KEYS = (
     "vision_token_id",
     "patch_size",
     "merge_size",
-    "layers_num",
-    "heads_num",
 )
 _GENERATOR_REQUIRED_KEYS = (
     "max_new_tokens",
     "overwrite",
     "disable_monkey_patch",
-    "outlier_ratio",
-    "dominance_ratio",
-    "outlier_share_thr",
 )
 _EVALUATOR_REQUIRED_KEYS = (
     "global_save_fig",
-    "normal_set_zero",
     "overwrite",
+    "outlier_ratio",
+    "dominance_ratio"
 )
 
 
@@ -72,20 +68,8 @@ def _normalize_return_aggregate(evaluator: Dict[str, Any]) -> None:
     if "return_aggregate" not in evaluator:
         raise KeyError("Missing required key in section 'evaluator': ['return_aggregate']")
 
-
-def _normalize_attention_eval_options(evaluator: Dict[str, Any]) -> None:
-    mode_aliases = {
-        "fast": "fast",
-        "sink_first": "sink_first",
-        "sink-first": "sink_first",
-        "sinkfirst": "sink_first",
-    }
-    raw_mode = evaluator.get("attention_eval_mode", "fast")
-    normalized_mode = mode_aliases.get(str(raw_mode).strip().lower())
-    if normalized_mode is None:
-        raise ValueError(f"Unsupported evaluator.attention_eval_mode: {raw_mode}. Use 'fast' or 'sink_first'.")
-    evaluator["attention_eval_mode"] = normalized_mode
-
+    
+def _normalize_our_method_options(evaluator: Dict[str, Any]) -> None:
     raw_topk = evaluator.get("topk_spike_patches", 3)
     try:
         topk = int(raw_topk)
@@ -95,35 +79,45 @@ def _normalize_attention_eval_options(evaluator: Dict[str, Any]) -> None:
         raise ValueError(f"evaluator.topk_spike_patches must be > 0, got: {topk}")
     evaluator["topk_spike_patches"] = topk
 
-    raw_se_rank_topk = evaluator.get("se_rank_topk_heads", evaluator.get("token_se_rank_topk_heads", 1))
-    try:
-        se_rank_topk_heads = int(raw_se_rank_topk)
-    except (TypeError, ValueError) as exc:
-        raise TypeError(f"evaluator.se_rank_topk_heads must be an integer, got: {raw_se_rank_topk}") from exc
-    if se_rank_topk_heads <= 0:
-        raise ValueError(f"evaluator.se_rank_topk_heads must be > 0, got: {se_rank_topk_heads}")
-    evaluator["se_rank_topk_heads"] = se_rank_topk_heads
-    if "token_se_rank_topk_heads" in evaluator:
-        evaluator["token_se_rank_topk_heads"] = se_rank_topk_heads
-
-    token_mode_aliases = {
-        "token_mean": "token_mean",
-        "mean": "token_mean",
-        "se_rank": "se_rank",
-        "token_se_rank": "se_rank",
-        "se_min": "se_rank",
-        "token_se_min": "se_rank",
+    sink_filter_aliases = {
+        "all_tokens": "all_tokens",
+        "all": "all_tokens",
+        "full": "all_tokens",
+        "anomaly_related_topk": "anomaly_related_topk",
+        "related_topk": "anomaly_related_topk",
+        "anomaly_related": "anomaly_related_topk",
+        "related": "anomaly_related_topk",
+        "anomaly_unrelated_topk": "anomaly_unrelated_topk",
+        "unrelated_topk": "anomaly_unrelated_topk",
+        "anomaly_unrelated": "anomaly_unrelated_topk",
+        "unrelated": "anomaly_unrelated_topk",
+        "pos_content": "pos_content",
+        "content": "pos_content",
+        "meaningful": "pos_content",
+        "pos_meaningful": "pos_content",
+        "pos_function": "pos_function",
+        "function": "pos_function",
+        "functional": "pos_function",
+        "pos_irrelevant": "pos_function",
+        "irrelevant": "pos_function",
     }
-    raw_token_mode = evaluator.get("token_aggregation_mode", evaluator.get("sink_first_token_mode", "token_mean"))
-    normalized_token_mode = token_mode_aliases.get(str(raw_token_mode).strip().lower())
-    if normalized_token_mode is None:
+    raw_sink_filter_mode = evaluator.get("sink_head_token_filter_mode", "pos_function")
+    normalized_sink_filter_mode = sink_filter_aliases.get(str(raw_sink_filter_mode).strip().lower())
+    if normalized_sink_filter_mode is None:
         raise ValueError(
-            f"Unsupported evaluator.token_aggregation_mode: {raw_token_mode}. "
-            "Use 'token_mean' or 'se_rank'."
+            f"Unsupported evaluator.sink_head_token_filter_mode: {raw_sink_filter_mode}. "
+            "Use one of {all_tokens, anomaly_related_topk, anomaly_unrelated_topk, pos_content, pos_function}."
         )
-    evaluator["token_aggregation_mode"] = normalized_token_mode
-    if "sink_first_token_mode" in evaluator:
-        evaluator["sink_first_token_mode"] = normalized_token_mode
+    evaluator["sink_head_token_filter_mode"] = normalized_sink_filter_mode
+
+    raw_sink_topk = evaluator.get("sink_head_token_topk", 8)
+    try:
+        sink_head_token_topk = int(raw_sink_topk)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"evaluator.sink_head_token_topk must be an integer, got: {raw_sink_topk}") from exc
+    if sink_head_token_topk <= 0:
+        raise ValueError(f"evaluator.sink_head_token_topk must be > 0, got: {sink_head_token_topk}")
+    evaluator["sink_head_token_topk"] = sink_head_token_topk
 
 
 def _normalize_openrouter_api_key(shared: Dict[str, Any]) -> None:
@@ -155,7 +149,7 @@ def load_config(config_path: str, dataset: str) -> Dict[str, Dict[str, Any]]:
     _require_keys("evaluator", evaluator, _EVALUATOR_REQUIRED_KEYS)
     _normalize_openrouter_api_key(shared)
     _normalize_return_aggregate(evaluator)
-    _normalize_attention_eval_options(evaluator)
+    _normalize_our_method_options(evaluator)
     _apply_dataset_defaults(dataset, generator, evaluator)
 
     for section in (shared, generator, evaluator):

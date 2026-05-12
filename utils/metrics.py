@@ -4,27 +4,33 @@ import pandas as pd
 import math
 import os
 import statistics
+
+
+def _safe_divide(numerator, denominator, default=0.0):
+    return default if denominator == 0 else numerator / denominator
+
+
+def _safe_roc_auc_score(y_true, y_score):
+    y_true = np.asarray(y_true)
+    if np.unique(y_true).size < 2:
+        return float("nan")
+    return roc_auc_score(y_true, y_score)
+
+
+def _safe_average_precision_score(y_true, y_score):
+    y_true = np.asarray(y_true)
+    if np.unique(y_true).size < 2:
+        return float("nan")
+    return average_precision_score(y_true, y_score)
+
+
 def compute_acc(gt,pred,threshold):
     pred_binary = (pred > threshold).astype(int)     
     correct_cnt = (pred_binary == gt).sum()
-    return correct_cnt / len(gt)
+    return _safe_divide(correct_cnt, len(gt))
 
 def compute_seg_metrics(dct):
-        #     seg_metrics["threshold(f1max)"].append(threshold_f1max)
-        # seg_metrics["acc(f1max)"].append(acc_f1max)
-        # seg_metrics["f1_max"].append(f1_max)
-        # seg_metrics["precision(f1max)"].append(precision_f1max)
-        # seg_metrics["recall(f1max)"].append(recall_f1max)
-        
-        # seg_metrics["threshold(min_dis)"].append(threshold_min_dis)
-        # seg_metrics["acc(min_dis)"].append(acc_min_dis)
-        # seg_metrics["f1(min_dis)"].append(f1_min_dis)
-        # seg_metrics["precision(min_dis)"].append(precision_min_dis)
-        # seg_metrics["recall(min_dis)"].append(recall_min_dis)
-        
-        # seg_metrics["all_precisions"].append(all_precisions)
-        # seg_metrics["all_recalls"].append(all_recalls)
-        # seg_metrics["all_thresholds"].append(all_thresholds)
+
     seg_metrics = {"split" : [],
                     "auroc" : [],
                     "ap" : [],
@@ -54,8 +60,8 @@ def compute_seg_metrics(dct):
         # 拼接所有像素
         pred = np.concatenate(pred_list)
         gt = np.concatenate(gt_list)
-        auroc_pixel = roc_auc_score(gt,pred)
-        ap_pixel = average_precision_score(gt, pred)
+        auroc_pixel = _safe_roc_auc_score(gt, pred)
+        ap_pixel = _safe_average_precision_score(gt, pred)
         all_precisions, all_recalls, all_thresholds = precision_recall_curve(gt, pred)
         if all_thresholds.size == 0:
             precision_f1max = float(all_precisions[0])
@@ -124,9 +130,9 @@ def calc_binary_classification_metrics(y_true, y_pred):
     """
     correct_count = sum([1 if y_pred[i] == y_true[i] else 0 for i in range(len(y_pred))])
     total_count = len(y_pred)
-    acc = correct_count/total_count 
-    auroc = roc_auc_score(y_true, y_pred)
-    aupr = average_precision_score(y_true, y_pred)
+    acc = _safe_divide(correct_count, total_count)
+    auroc = _safe_roc_auc_score(y_true, y_pred)
+    aupr = _safe_average_precision_score(y_true, y_pred)
     # 平衡准确率 = (recall + specificity) / 2
     balanced_acc = balanced_accuracy_score(y_true , y_pred)
     y_true = np.array(y_true)
@@ -136,11 +142,12 @@ def calc_binary_classification_metrics(y_true, y_pred):
     fp = sum((y_true == 0) & (y_pred == 1))
     fn = sum((y_true == 1) & (y_pred == 0))
     print(f"tn = {tn}   tp  = {tp}   fp = {fp}   fn = {fn}   correct_count = {correct_count}")
-    precision = tp / (tp + fp) 
-    recall = tp / (tp + fn) 
-    specificity = tn / (tn + fp) 
-    mcc = (tp * tn - fp * fn) / math.sqrt ((tp + fp) * (tp + fn) * (tn +fp) * (tn + fn))
-    f1_score = 2 * (precision * recall) / (precision + recall) 
+    precision = _safe_divide(tp, tp + fp)
+    recall = _safe_divide(tp, tp + fn)
+    specificity = _safe_divide(tn, tn + fp)
+    mcc_denom = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+    mcc = _safe_divide(tp * tn - fp * fn, mcc_denom)
+    f1_score = _safe_divide(2 * precision * recall, precision + recall)
     return acc , f1_score, precision, recall , mcc ,balanced_acc , auroc , aupr
 
 def compute_classify_matrics(anomaly_dct):

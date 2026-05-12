@@ -5,36 +5,36 @@ Conclusion: Provide a one-sentence summary that states the final judgment on whe
 Output your response strictly in this format—without any additional text or tags outside the specified structure:
 <overview>...</overview><analyze>...</analyze><conclusion>...</conclusion><answer>Yes/No</answer> """
 
-
+# 0504 修正了提取注意力时候的问题
 DATASET_DEFAULTS = {
     "mvtec": {
         "dataset_path": "/gpfsdata/home/yizhou/Project/VLM/VLM-AD/eval/eval_dataset/MVTecAD_seg_0shot.tsv",
-        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/refactor-per-head-sinkfirst/MVTecAD_seg_0shot",
+        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/ablation_0508/MVTecAD_seg_0shot",
         "replace_path": "/gpfsdata/home/yizhou/Project/VLM/VLM-AD/dataset/anomaly/MVTec-AD/",
     },
     "sdd": {
         "dataset_path": "/gpfsdata/home/yizhou/Project/VLM/VLM-AD/eval/eval_dataset/SDD_seg_0shot.tsv",
-        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/refactor-per-head-sinkfirst/SDD_seg_0shot",
+        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/ablation_0508/SDD_seg_0shot",
         "replace_path": "/home/yizhou/LVLM/dataset/TEST_DATASET/SDD/SDD/",
     },
     "dtd": {
         "dataset_path": "/gpfsdata/home/yizhou/Project/VLM/VLM-AD/eval/eval_dataset/DTD_seg_0shot.tsv",
-        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/refactor-per-head-sinkfirst/DTD_seg_0shot",
+        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/ablation_0508/DTD_seg_0shot",
         "replace_path": "/home/yizhou/LVLM/dataset/TEST_DATASET/dtd/",
     },
     "wfdd": {
         "dataset_path": "/gpfsdata/home/yizhou/Project/VLM/VLM-AD/eval/eval_dataset/WFDD_seg_0shot.tsv",
-        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/refactor-per-head-sinkfirst/WFDD_seg_0shot",
+        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/ablation_0508/WFDD_seg_0shot",
         "replace_path": "/home/yizhou/LVLM/dataset/TEST_DATASET/wfdd/",
     },
     "Liver_AD": {
         "dataset_path": "/gpfsdata/home/yizhou/Project/VLM/VLM-AD/yz/READL/eval_dataset/Liver_AD.tsv",
-        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/refactor-per-head-sinkfirst/Liver_AD_seg_0shot",
+        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/ablation_0508/Liver_AD_seg_0shot",
         "replace_path": "/share/home/yizhou_lustre/dataset/medical_anomaly/Liver_AD/",
     },
     "BraTS2021": {
         "dataset_path": "/gpfsdata/home/yizhou/Project/VLM/VLM-AD/yz/READL/eval_dataset/BraTS2021.tsv",
-        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/refactor-per-head-sinkfirst/BraTS2021_seg_0shot",
+        "output_root": "/gpfsdata/home/yizhou/yizhou_lustre/LVLM-results/ablation_0508/BraTS2021_seg_0shot",
         "replace_path": "/share/home/yizhou_lustre/dataset/medical_anomaly/BraTS2021_slice/",
     },
 }

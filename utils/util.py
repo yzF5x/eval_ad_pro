@@ -40,7 +40,23 @@ def get_resize_info(model_path):
     return merged_patch_size , max_size
 
 def build_model_name(model_path: str, with_tag: bool) -> str:
-    model_name = os.path.basename(model_path.rstrip("/\\"))
+    MODEL_PATTERNS = {
+        "Qwen2.5-VL-7B-Instruct": "Qwen2.5-VL-7B-Instruct",
+        "Qwen3-VL-8B-Instruct": "Qwen3-VL-8B-Instruct",
+        "InternVL3-8B-HF": "InternVL3-8B-HF",
+        "InternVL3_5-8B-HF":"InternVL3_5-8B-HF",
+        "LLaVA-OneVision-1.5-8B-Instruct":"LLaVA-OneVision-1.5-8B-Instruct",
+        "LLaVA-OneVision-1.5-4B-Instruct":"LLaVA-OneVision-1.5-4B-Instruct"
+    }
+
+    model_name = "Unknown"
+
+    # 遍历字典进行匹配
+    for pattern, name in MODEL_PATTERNS.items():
+        if pattern in model_path:
+            model_name = name
+            break
+    # model_name = os.path.basename(model_path.rstrip("/\\"))
     return f"{model_name}-with-tag" if with_tag else model_name
 
 def resize_image(images , max_size , merged_patch_size):

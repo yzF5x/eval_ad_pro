@@ -241,7 +241,7 @@ def main(args):
             if args.return_aggregate
             else "_final_valid_image_fast_sink_first.png"
         )
-        target_path = os.path.splitext(save_name)[0] + target_suffix
+        target_path = save_name.replace(".png", target_suffix)
         if args.global_save_fig and os.path.exists(target_path) and not args.overwrite:
             print(f"Skipping existing {target_path}")
             args.save_fig = False

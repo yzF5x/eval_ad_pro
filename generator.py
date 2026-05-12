@@ -10,6 +10,29 @@ from configs.dataset_config import DATASET_DEFAULTS, QUESTION_WITH_TAG
 from models.factory import HandlerFactory
 from utils import build_model_name, load_dataset, move_to_cpu, toliststr
 
+import re
+
+# 1. 将正则表达式预编译为全局常量（模块加载时只编译一次，极其高效）
+# re.IGNORECASE 标志直接让匹配忽略大小写，省去了 path.lower() 的开销
+_ABNORMAL_RE = re.compile(
+    r'ungood|bad|defect|defective|anomaly|fault|error|broken|broken_large'
+    r'|damaged|crack|scratch|scratch_large|abnormal'
+    r'|bent|stain|rust|dent|chip|flip|contamination|misaligned|missing|blob'
+    r'|color|glue|translucent|fog',
+    re.IGNORECASE
+)
+
+_NORMAL_RE = re.compile(
+    r'(?:^|[/\\])(normal|good|ok|healthy|perfect|undamaged)',
+    re.IGNORECASE
+)
+
+def parse_gt_answer(path: str) -> bool:
+    # 2. 直接在原始字符串上进行 C 层级的单次扫描匹配     
+    if _NORMAL_RE.search(path):
+        return "no"
+    return "yes"
+    # raise ValueError(f"无法识别路径中的 GT 标签: '{path}'")
 
 def _get_input_token_len(inputs) -> int:
     if hasattr(inputs, "input_ids"):
@@ -40,7 +63,7 @@ def main(args):
     os.makedirs(out_path, exist_ok=True)
 
     ret = {}
-    for _, data in eval_dataset.iterrows():
+    for i, data in eval_dataset.iterrows():
         img_path = toliststr(data["image_path"])[0]
         save_name = img_path.replace(args.replace_path, "")
         sample_id = save_name
@@ -59,7 +82,6 @@ def main(args):
             use_structured_prompt=args.with_tag,
         )
         inputs = processed["inputs"]
-        processed_prompt = processed["prompt_text"]
         processed_image = processed["processed_image"]
 
         generated = handler.generate(
@@ -77,19 +99,22 @@ def main(args):
             generated=generated,
             input_len=input_token_len,
             processed_image=processed_image,
-            prompt=processed_prompt,
             model_type=model_type,
             vision_token_id=args.vision_token_id,
             patch_size=args.patch_size,
             merge_size=args.merge_size,
-            outlier_ratio=args.outlier_ratio,
-            dominance_ratio=args.dominance_ratio,
-            outlier_share_thr=args.outlier_share_thr,
         )
 
         compressed_attn_to_save = move_to_cpu(compressed_attn)
         if isinstance(compressed_attn_to_save, dict):
-            for k in ("vlm_attn", "prompt2text_attn", "filtered_vlm_attn", "filtered_prompt2text_attn"):
+            for k in (
+                "flatten_text2vision_attn",
+                "flatten_text2text_attn",
+                "vlm_attn",
+                "prompt2text_attn",
+                "filtered_vlm_attn",
+                "filtered_prompt2text_attn",
+            ):
                 v = compressed_attn_to_save.get(k, None)
                 if torch.is_tensor(v):
                     compressed_attn_to_save[k] = v.to(torch.float16)
@@ -113,12 +138,12 @@ def main(args):
             },
             save_path,
         )
-
+        gt_answer = parse_gt_answer(img_path)
         ret[sample_id] = {
             "id": sample_id,
             "category": data.get("category", ""),
             "pred_reasoning": output_text,
-            "answer": data.get("answer", ""),
+            "answer": gt_answer,
             "gt_reasoning": data.get("answer", ""),
         }
         print(f"Saved {save_path}")
