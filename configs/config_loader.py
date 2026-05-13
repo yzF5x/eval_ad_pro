@@ -122,7 +122,7 @@ def _normalize_our_method_options(evaluator: Dict[str, Any]) -> None:
         )
     evaluator["sink_head_token_filter_mode"] = normalized_sink_filter_mode
 
-    raw_sink_topk = evaluator.get("sink_head_token_topk", 8)
+    raw_sink_topk = evaluator.get("sink_head_token_topk", 5)
     try:
         sink_head_token_topk = int(raw_sink_topk)
     except (TypeError, ValueError) as exc:

@@ -9,6 +9,7 @@ from .util import build_model_name, get_resize_info, move_to_cpu, resize_image, 
 from .visual_tools import (
     evaluate_saved_attention_sink_first_entropy_af_token_mean,
     evaluate_saved_attention_sink_first_token_mean,
+    get_attention_from_saved_ablation_nospacy,
     optimized_save_per_layer_head_attention,
 )
 
@@ -33,4 +34,5 @@ __all__ = [
     "use_monkey_patch_qwen2_5vl_qkvfp32_eager_visionattn",
     "evaluate_saved_attention_sink_first_entropy_af_token_mean",
     "evaluate_saved_attention_sink_first_token_mean",
+    "get_attention_from_saved_ablation_nospacy",
 ]

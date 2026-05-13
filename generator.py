@@ -27,7 +27,21 @@ _NORMAL_RE = re.compile(
     re.IGNORECASE
 )
 
-def parse_gt_answer(path: str) -> bool:
+def _normalize_tsv_answer(answer) -> str:
+    answer_text = str(answer).strip().lower()
+    if re.search(r"\byes\b", answer_text):
+        return "yes"
+    if re.search(r"\bno\b", answer_text):
+        return "no"
+    raise ValueError(f"Cannot parse GT answer from TSV answer field: {answer}")
+
+
+def parse_gt_answer(path: str, data=None, dataset: str = "") -> str:
+    if str(dataset).strip().lower() == "mcbt":
+        if data is None or "answer" not in data:
+            raise ValueError("MCBT requires reading GT from the TSV 'answer' field.")
+        return _normalize_tsv_answer(data["answer"])
+
     # 2. 直接在原始字符串上进行 C 层级的单次扫描匹配     
     if _NORMAL_RE.search(path):
         return "no"
@@ -138,7 +152,7 @@ def main(args):
             },
             save_path,
         )
-        gt_answer = parse_gt_answer(img_path)
+        gt_answer = parse_gt_answer(img_path, data=data, dataset=args.dataset)
         ret[sample_id] = {
             "id": sample_id,
             "category": data.get("category", ""),

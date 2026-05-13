@@ -135,11 +135,10 @@ def _normalize_share_thr(value) -> float:
 def _build_eval_variant_tag(
     topk_spike_patches: int,
     sink_head_token_filter_mode: str = "pos_function",
-    sink_head_token_topk: int = 8,
+    share_thr: float = 0.3,
 ) -> str:
-    display_topk = 5 if sink_head_token_filter_mode == "random" else sink_head_token_topk
-    sink_filter_tag = f"_sink_filter_{sink_head_token_filter_mode}_token_topk_{display_topk}"
-    return f"sink_first_token_mean_topk_spike_patches_{topk_spike_patches}{sink_filter_tag}"
+    sink_filter_tag = f"_sink_filter_{sink_head_token_filter_mode}"
+    return f"af_topk_spike_patches_{topk_spike_patches}{sink_filter_tag}_sharethr_{share_thr:g}"
 
 
 def run_anomaly_metrics(args, result_json_path: str, result_dir: str, model_type: str):
@@ -191,13 +190,13 @@ def main(args):
         getattr(args, "sink_head_token_filter_mode", "pos_function")
     )
     sink_head_token_topk = _normalize_sink_head_token_topk(
-        getattr(args, "sink_head_token_topk", 8)
+        getattr(args, "sink_head_token_topk", 5)
     )
     share_thr = _normalize_share_thr(getattr(args, "share_thr", 0.3))
     eval_variant_tag = _build_eval_variant_tag(
         topk_spike_patches,
         sink_head_token_filter_mode=sink_head_token_filter_mode,
-        sink_head_token_topk=sink_head_token_topk,
+        share_thr=share_thr,
     )
     save_dir = os.path.join(args.generated_dir, model_name)
     out_path = os.path.join(save_dir, "output_attentions")
