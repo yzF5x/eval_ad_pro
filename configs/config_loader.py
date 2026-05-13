@@ -79,10 +79,22 @@ def _normalize_our_method_options(evaluator: Dict[str, Any]) -> None:
         raise ValueError(f"evaluator.topk_spike_patches must be > 0, got: {topk}")
     evaluator["topk_spike_patches"] = topk
 
+    raw_share_thr = evaluator.get("share_thr", 0.3)
+    try:
+        share_thr = float(raw_share_thr)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"evaluator.share_thr must be a float, got: {raw_share_thr}") from exc
+    if not 0.0 < share_thr <= 1.0:
+        raise ValueError(f"evaluator.share_thr must be in (0, 1], got: {share_thr}")
+    evaluator["share_thr"] = share_thr
+
     sink_filter_aliases = {
         "all_tokens": "all_tokens",
         "all": "all_tokens",
         "full": "all_tokens",
+        "random": "random",
+        "random_topk": "random",
+        "random_tokens": "random",
         "anomaly_related_topk": "anomaly_related_topk",
         "related_topk": "anomaly_related_topk",
         "anomaly_related": "anomaly_related_topk",
@@ -106,7 +118,7 @@ def _normalize_our_method_options(evaluator: Dict[str, Any]) -> None:
     if normalized_sink_filter_mode is None:
         raise ValueError(
             f"Unsupported evaluator.sink_head_token_filter_mode: {raw_sink_filter_mode}. "
-            "Use one of {all_tokens, anomaly_related_topk, anomaly_unrelated_topk, pos_content, pos_function}."
+            "Use one of {all_tokens, random, anomaly_related_topk, anomaly_unrelated_topk, pos_content, pos_function}."
         )
     evaluator["sink_head_token_filter_mode"] = normalized_sink_filter_mode
 

@@ -7,6 +7,7 @@ from .qwen25_util import (
 )
 from .util import build_model_name, get_resize_info, move_to_cpu, resize_image, send2api, toliststr
 from .visual_tools import (
+    evaluate_saved_attention_sink_first_entropy_af_token_mean,
     evaluate_saved_attention_sink_first_token_mean,
     optimized_save_per_layer_head_attention,
 )
@@ -30,5 +31,6 @@ __all__ = [
     "calc_binary_classification_metrics",
     "use_monkey_patch_qwen2_5vl_qkvfp32_eager_encoderselfattn",
     "use_monkey_patch_qwen2_5vl_qkvfp32_eager_visionattn",
+    "evaluate_saved_attention_sink_first_entropy_af_token_mean",
     "evaluate_saved_attention_sink_first_token_mean",
 ]

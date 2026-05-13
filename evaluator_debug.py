@@ -82,6 +82,9 @@ def _normalize_sink_head_token_filter_mode(mode: str) -> str:
         "all_tokens": "all_tokens",
         "all": "all_tokens",
         "full": "all_tokens",
+        "random": "random",
+        "random_topk": "random",
+        "random_tokens": "random",
         "anomaly_related_topk": "anomaly_related_topk",
         "related_topk": "anomaly_related_topk",
         "anomaly_related": "anomaly_related_topk",
@@ -104,7 +107,7 @@ def _normalize_sink_head_token_filter_mode(mode: str) -> str:
     if normalized is None:
         raise ValueError(
             f"Unsupported sink_head_token_filter_mode: {mode}. "
-            "Use one of {all_tokens, anomaly_related_topk, anomaly_unrelated_topk, pos_content, pos_function}."
+            "Use one of {all_tokens, random, anomaly_related_topk, anomaly_unrelated_topk, pos_content, pos_function}."
         )
     return normalized
 
@@ -119,12 +122,23 @@ def _normalize_sink_head_token_topk(value) -> int:
     return topk
 
 
+def _normalize_share_thr(value) -> float:
+    try:
+        share_thr = float(value)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"share_thr must be a float, got: {value}") from exc
+    if not 0.0 < share_thr <= 1.0:
+        raise ValueError(f"share_thr must be in (0, 1], got: {share_thr}")
+    return share_thr
+
+
 def _build_eval_variant_tag(
     topk_spike_patches: int,
     sink_head_token_filter_mode: str = "pos_function",
     sink_head_token_topk: int = 8,
 ) -> str:
-    sink_filter_tag = f"_sink_filter_{sink_head_token_filter_mode}_token_topk_{sink_head_token_topk}"
+    display_topk = 5 if sink_head_token_filter_mode == "random" else sink_head_token_topk
+    sink_filter_tag = f"_sink_filter_{sink_head_token_filter_mode}_token_topk_{display_topk}"
     return f"sink_first_token_mean_topk_spike_patches_{topk_spike_patches}{sink_filter_tag}"
 
 
@@ -179,6 +193,7 @@ def main(args):
     sink_head_token_topk = _normalize_sink_head_token_topk(
         getattr(args, "sink_head_token_topk", 8)
     )
+    share_thr = _normalize_share_thr(getattr(args, "share_thr", 0.3))
     eval_variant_tag = _build_eval_variant_tag(
         topk_spike_patches,
         sink_head_token_filter_mode=sink_head_token_filter_mode,
@@ -283,7 +298,8 @@ def main(args):
             sink_head_token_filter_mode=sink_head_token_filter_mode,
             sink_head_token_topk=sink_head_token_topk,
             outlier_ratio = args.outlier_ratio , 
-            dominance_ratio = args.dominance_ratio
+            dominance_ratio = args.dominance_ratio,
+            share_thr=share_thr,
         )
         if np.isnan(pred_mask_median).any():
             print(f"\n[ERROR] Found NaN in prediction mask!")
@@ -354,9 +370,10 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Mode for selecting output tokens when finding sink heads: "
-             "{all_tokens, anomaly_related_topk, anomaly_unrelated_topk, pos_content, pos_function}.",
+             "{all_tokens, random, anomaly_related_topk, anomaly_unrelated_topk, pos_content, pos_function}.",
     )
     p.add_argument("--sink_head_token_topk", type=int, default=None)
+    p.add_argument("--share_thr", type=float, default=None, help="Threshold for marking bad head rows by spike-patch attention share. Default: 0.3.")
     p.add_argument("--debug_mode",action="store_true", default=False)
     cli_args = p.parse_args()
     stage_args = build_stage_namespace(cli_args.config, stage="evaluator", dataset=cli_args.dataset)
@@ -368,5 +385,7 @@ if __name__ == "__main__":
         stage_args.sink_head_token_filter_mode = _normalize_sink_head_token_filter_mode(cli_args.sink_head_token_filter_mode)
     if cli_args.sink_head_token_topk is not None:
         stage_args.sink_head_token_topk = _normalize_sink_head_token_topk(cli_args.sink_head_token_topk)
+    if cli_args.share_thr is not None:
+        stage_args.share_thr = _normalize_share_thr(cli_args.share_thr)
     stage_args.debug_mode = cli_args.debug_mode
     main(stage_args)

@@ -15,7 +15,7 @@ from utils import (
     build_model_name,
     compute_classify_matrics,
     compute_seg_metrics,
-    evaluate_saved_attention_sink_first_token_mean,
+    evaluate_saved_attention_sink_first_entropy_af_token_mean,
     send2api,
 )
 
@@ -139,7 +139,7 @@ def _build_eval_variant_tag(
 ) -> str:
     display_topk = 5 if sink_head_token_filter_mode == "random" else sink_head_token_topk
     sink_filter_tag = f"_sink_filter_{sink_head_token_filter_mode}_token_topk_{display_topk}"
-    return f"sink_first_token_mean_topk_spike_patches_{topk_spike_patches}{sink_filter_tag}"
+    return f"sink_first_entropy_af_token_mean_topk_spike_patches_{topk_spike_patches}{sink_filter_tag}"
 
 
 def run_anomaly_metrics(args, result_json_path: str, result_dir: str, model_type: str):
@@ -276,7 +276,7 @@ def main(args):
 
         pred_has_anomaly = bool(_parse_pred_answer(output_text, result_json_path, model_type))
 
-        pred_mask_median, sc, sample_outlier_tokens_num, sample_all_tokens_num = evaluate_saved_attention_sink_first_token_mean(
+        pred_mask_median, sc, sample_outlier_tokens_num, sample_all_tokens_num = evaluate_saved_attention_sink_first_entropy_af_token_mean(
             tokenizer=handler.tokenizer,
             compressed_attn=compressed_attn,
             sequences=sequences,
@@ -338,7 +338,7 @@ def main(args):
     seg_metrics_median = compute_seg_metrics(pixel_dct_median)
     seg_metrics_median_zero = compute_seg_metrics(pixel_dct_median_zero)
 
-    score_tag = f"sink_first_token_mean_topk_spike_patches_{topk_spike_patches}"
+    score_tag = f"sink_first_entropy_af_token_mean_topk_spike_patches_{topk_spike_patches}"
     if args.return_aggregate:
         seg_metrics_median.to_excel(os.path.join(out_model_dir, f"seg_score_aggreated_{score_tag}.xlsx"), index=False, float_format="%.3f")
         seg_metrics_median_zero.to_excel(os.path.join(out_model_dir, f"seg_score_aggreated_zero_{score_tag}.xlsx"), index=False, float_format="%.3f")
